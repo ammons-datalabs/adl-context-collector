@@ -10,6 +10,7 @@ import { captureThought } from "./tools/capture-thought.js";
 import { saveFact } from "./tools/save-fact.js";
 import { listRecent } from "./tools/list-recent.js";
 import { brainStats } from "./tools/brain-stats.js";
+import { ingestDocument } from "./tools/ingest-document.js";
 
 const server = new McpServer({
   name: "open-brain",
@@ -170,6 +171,30 @@ server.tool(
   "Get statistics about the knowledge base: total captures, facts, breakdown by domain, last capture date.",
   {},
   async () => brainStats()
+);
+
+// 8. Document ingestion
+server.tool(
+  "ingest_document",
+  "Ingest a file or directory into the knowledge base. Supports PDF, Markdown, and plain text. Files are chunked, embedded, and metadata-extracted automatically.",
+  {
+    path: z.string().describe("Absolute path to a file or directory"),
+    domain: z
+      .enum(DOMAINS as [string, ...string[]])
+      .optional()
+      .describe("Override auto-detected domain for all chunks"),
+    recursive: z
+      .boolean()
+      .default(false)
+      .optional()
+      .describe("Recurse into subdirectories"),
+    dry_run: z
+      .boolean()
+      .default(false)
+      .optional()
+      .describe("Show what would be ingested without writing"),
+  },
+  async (args) => ingestDocument(args)
 );
 
 // Start server

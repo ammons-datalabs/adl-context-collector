@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "vitest run"
+    "test": "vitest run",
+    "ingest": "tsx src/ingest-cli.ts"
   },
   "keywords": [],
   "author": "",
@@ -13,6 +14,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "dotenv": "^17.3.1",
+    "pdf-parse": "^2.4.5",
     "pg": "^8.20.0",
     "pgvector": "^0.2.1",
     "zod": "^3.24.2"
