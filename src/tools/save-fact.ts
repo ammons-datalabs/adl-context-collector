@@ -1,0 +1,56 @@
+import { query } from "../db.js";
+
+export async function saveFact(args: {
+  domain: string;
+  category: string;
+  key: string;
+  value: string;
+  value_numeric?: number;
+  currency?: string;
+  unit?: string;
+  context?: string;
+  as_of?: string;
+}) {
+  const asOf = args.as_of ?? new Date().toISOString().split("T")[0];
+
+  // Mark previous value as superseded
+  await query(
+    `UPDATE facts SET valid_until = $1::date
+     WHERE domain = $2 AND category = $3 AND key = $4 AND valid_until IS NULL`,
+    [asOf, args.domain, args.category, args.key]
+  );
+
+  // Insert new value
+  const result = await query(
+    `INSERT INTO facts (domain, category, key, value, value_numeric, currency, unit, context, as_of, source_type)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, 'claude_capture')
+     ON CONFLICT (domain, category, key, as_of) DO UPDATE
+       SET value = EXCLUDED.value,
+           value_numeric = EXCLUDED.value_numeric,
+           currency = EXCLUDED.currency,
+           unit = EXCLUDED.unit,
+           context = EXCLUDED.context,
+           captured_at = NOW()
+     RETURNING id`,
+    [
+      args.domain,
+      args.category,
+      args.key,
+      args.value,
+      args.value_numeric ?? null,
+      args.currency ?? null,
+      args.unit ?? null,
+      args.context ?? null,
+      asOf,
+    ]
+  );
+
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: `Saved fact #${result.rows[0].id}: ${args.domain}/${args.category}/${args.key} = ${args.value}${args.currency ? ` ${args.currency}` : ""} (as of ${asOf})`,
+      },
+    ],
+  };
+}
