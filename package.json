@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "vitest run",
-    "ingest": "tsx src/ingest-cli.ts"
+    "ingest": "tsx src/ingest-cli.ts",
+    "ingest-github": "tsx src/ingest-github.ts"
   },
   "keywords": [],
   "author": "",
