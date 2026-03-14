@@ -1,0 +1,35 @@
+{
+  "serverName": "my-brain",
+  "categories": ["status", "cost", "date", "contact", "preference"],
+  "tools": {
+    "search_brain": {
+      "description": "Search the knowledge base using semantic similarity."
+    },
+    "lookup_fact": {
+      "description": "Look up a specific fact by key.",
+      "keyExamples": ["project_status", "deploy_date"]
+    },
+    "search_facts": {
+      "description": "Search or list stored facts."
+    },
+    "capture_thought": {
+      "description": "Save a thought, decision, insight, or note to the knowledge base. Content is embedded for semantic search and metadata is extracted automatically."
+    },
+    "save_fact": {
+      "description": "Save or update a structured fact. Old values are preserved with timestamps for history.",
+      "keyExamples": ["project_status", "next_milestone_date"],
+      "currencies": null,
+      "units": null,
+      "peopleDescription": "People involved or referenced"
+    },
+    "list_recent": {
+      "description": "List the most recently captured thoughts. Useful for reviewing recent activity."
+    },
+    "brain_stats": {
+      "description": "Get statistics about the knowledge base: total captures, facts, breakdown by domain, last capture date."
+    },
+    "ingest_document": {
+      "description": "Ingest a file or directory into the knowledge base. Supports PDF, Markdown, and plain text. Files are chunked, embedded, and metadata-extracted automatically."
+    }
+  }
+}
