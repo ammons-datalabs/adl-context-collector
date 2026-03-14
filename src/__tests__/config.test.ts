@@ -56,7 +56,7 @@ describe("loadConfig", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllEnvs();
-    tempDir = join(tmpdir(), `open-brain-test-${Date.now()}`);
+    tempDir = join(tmpdir(), `context-collector-test-${Date.now()}`);
     mkdirSync(tempDir, { recursive: true });
   });
 
@@ -77,7 +77,7 @@ describe("loadConfig", () => {
     vi.stubEnv("BRAIN_CONFIG", "");
     const { loadConfig } = await import("../config.js");
     const config = loadConfig();
-    expect(config.serverName).toBe("open-brain");
+    expect(config.serverName).toBe("context-collector");
     expect(config.tools.search_brain.description).toContain("semantic similarity");
     expect(config.tools.save_fact.currencies).toBeNull();
     expect(config.tools.save_fact.units).toBeNull();
@@ -123,7 +123,7 @@ describe("loadConfig", () => {
     vi.stubEnv("BRAIN_CONFIG", join(tempDir, "nonexistent.json"));
     const { loadConfig } = await import("../config.js");
     const config = loadConfig();
-    expect(config.serverName).toBe("open-brain");
+    expect(config.serverName).toBe("context-collector");
     expect(config.tools.save_fact.currencies).toBeNull();
   });
 

@@ -7,7 +7,7 @@ import type { GitHubIssue } from "./ingestion/chunkers/github-issue.js";
 function usage(): never {
   console.error(`Usage: npx tsx src/ingest-github.ts [options]
 
-Ingest GitHub issues into open-brain. Reads issue JSON from stdin or fetches via gh CLI.
+Ingest GitHub issues into context-collector. Reads issue JSON from stdin or fetches via gh CLI.
 
 Options:
   --repo <owner/repo>   Fetch issues from this repo using gh CLI

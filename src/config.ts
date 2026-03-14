@@ -22,7 +22,7 @@ export interface BrainConfig {
 }
 
 const DEFAULTS: BrainConfig = {
-  serverName: "open-brain",
+  serverName: "context-collector",
   categories: ["status", "cost", "date", "contact", "preference"],
   tools: {
     search_brain: {
