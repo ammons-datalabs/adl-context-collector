@@ -1,5 +1,6 @@
 import "dotenv/config";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
+import { parseArgs } from "node:util";
 import { ingestGitHubIssues } from "./ingestion/github.js";
 import type { GitHubIssue } from "./ingestion/chunkers/github-issue.js";
 
@@ -28,26 +29,6 @@ Examples:
   process.exit(2);
 }
 
-function parseArgs(argv: string[]) {
-  if (argv.includes("--help") || argv.includes("-h")) usage();
-
-  const repoIdx = argv.indexOf("--repo");
-  const repo = repoIdx >= 0 ? argv[repoIdx + 1] : undefined;
-
-  const domainIdx = argv.indexOf("--domain");
-  const domain = domainIdx >= 0 ? argv[domainIdx + 1] : undefined;
-
-  const limitIdx = argv.indexOf("--limit");
-  const limit = limitIdx >= 0 ? parseInt(argv[limitIdx + 1], 10) : 500;
-
-  const stateIdx = argv.indexOf("--state");
-  const state = stateIdx >= 0 ? argv[stateIdx + 1] : "all";
-
-  const dryRun = argv.includes("--dry-run");
-
-  return { repo, domain, limit, state, dryRun };
-}
-
 const GH_JSON_FIELDS = "number,title,body,updatedAt,comments,labels,author,url";
 
 function fetchIssuesViaGh(
@@ -56,11 +37,25 @@ function fetchIssuesViaGh(
   state: string
 ): GitHubIssue[] {
   console.error(`Fetching issues from ${repo} via gh CLI...`);
-  const cmd = `gh issue list -R ${repo} --json ${GH_JSON_FIELDS} -L ${limit} --state ${state}`;
-  const output = execSync(cmd, {
-    encoding: "utf-8",
-    maxBuffer: 100 * 1024 * 1024, // 100MB
-  });
+  const output = execFileSync(
+    "gh",
+    [
+      "issue",
+      "list",
+      "-R",
+      repo,
+      "--json",
+      GH_JSON_FIELDS,
+      "-L",
+      String(limit),
+      "--state",
+      state,
+    ],
+    {
+      encoding: "utf-8",
+      maxBuffer: 100 * 1024 * 1024, // 100MB
+    }
+  );
   return JSON.parse(output) as GitHubIssue[];
 }
 
@@ -80,9 +75,29 @@ function readStdin(): Promise<string> {
 }
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  if (process.argv.slice(2).includes("--help") || process.argv.slice(2).includes("-h")) {
+    usage();
+  }
 
-  if (!args.repo) {
+  const { values } = parseArgs({
+    args: process.argv.slice(2),
+    options: {
+      repo: { type: "string" },
+      domain: { type: "string" },
+      limit: { type: "string", default: "500" },
+      state: { type: "string", default: "all" },
+      "dry-run": { type: "boolean", default: false },
+    },
+    strict: true,
+  });
+
+  const repo = values.repo;
+  const domain = values.domain;
+  const limit = parseInt(values.limit!, 10);
+  const state = values.state!;
+  const dryRun = values["dry-run"]!;
+
+  if (!repo) {
     console.error("Error: --repo is required");
     usage();
   }
@@ -98,8 +113,8 @@ async function main(): Promise<void> {
     console.error(`Read ${issues.length} issue(s) from stdin`);
   } else {
     // Fetch via gh CLI
-    issues = fetchIssuesViaGh(args.repo, args.limit, args.state);
-    console.error(`Fetched ${issues.length} issues from ${args.repo}`);
+    issues = fetchIssuesViaGh(repo, limit, state);
+    console.error(`Fetched ${issues.length} issues from ${repo}`);
   }
 
   if (issues.length === 0) {
@@ -109,12 +124,12 @@ async function main(): Promise<void> {
 
   const result = await ingestGitHubIssues(
     issues,
-    args.repo,
-    { domain: args.domain, dryRun: args.dryRun },
+    repo,
+    { domain, dryRun },
     (msg) => console.error(msg)
   );
 
-  const prefix = args.dryRun ? "[DRY RUN] " : "";
+  const prefix = dryRun ? "[DRY RUN] " : "";
   console.log(
     `\n${prefix}Summary:` +
       `\n  Issues: ${result.ingested} ingested, ${result.skipped} skipped, ${result.failed} failed` +

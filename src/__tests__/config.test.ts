@@ -9,12 +9,12 @@ describe("config-driven domains", () => {
     vi.unstubAllEnvs();
   });
 
-  it("uses default personal domains when BRAIN_DOMAINS is not set", async () => {
+  it("uses generic default domains when BRAIN_DOMAINS is not set", async () => {
     vi.stubEnv("BRAIN_DOMAINS", "");
     const { DOMAINS } = await import("../types.js");
-    expect(DOMAINS).toContain("finance");
-    expect(DOMAINS).toContain("property");
-    expect(DOMAINS.length).toBe(7);
+    expect(DOMAINS).toContain("general");
+    expect(DOMAINS).toContain("project");
+    expect(DOMAINS.length).toBe(3);
   });
 
   it("parses BRAIN_DOMAINS from environment", async () => {
@@ -64,6 +64,15 @@ describe("loadConfig", () => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
+  /** Write a partial config JSON, stub BRAIN_CONFIG, and return the loaded config. */
+  async function loadConfigWith(partial: Record<string, unknown>) {
+    const configPath = join(tempDir, "test-config.json");
+    writeFileSync(configPath, JSON.stringify(partial));
+    vi.stubEnv("BRAIN_CONFIG", configPath);
+    const { loadConfig } = await import("../config.js");
+    return loadConfig();
+  }
+
   it("returns generic defaults when BRAIN_CONFIG is not set", async () => {
     vi.stubEnv("BRAIN_CONFIG", "");
     const { loadConfig } = await import("../config.js");
@@ -75,18 +84,14 @@ describe("loadConfig", () => {
   });
 
   it("deep-merges partial config from JSON file", async () => {
-    const configPath = join(tempDir, "test-config.json");
-    writeFileSync(configPath, JSON.stringify({
+    const config = await loadConfigWith({
       serverName: "work-brain",
       tools: {
         search_brain: {
           description: "Search work knowledge."
         }
       }
-    }));
-    vi.stubEnv("BRAIN_CONFIG", configPath);
-    const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
+    });
     expect(config.serverName).toBe("work-brain");
     expect(config.tools.search_brain.description).toBe("Search work knowledge.");
     expect(config.tools.brain_stats.description).toContain("statistics");
@@ -94,35 +99,23 @@ describe("loadConfig", () => {
   });
 
   it("treats empty currencies array as null", async () => {
-    const configPath = join(tempDir, "test-config.json");
-    writeFileSync(configPath, JSON.stringify({
+    const config = await loadConfigWith({
       tools: { save_fact: { currencies: [] } }
-    }));
-    vi.stubEnv("BRAIN_CONFIG", configPath);
-    const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
+    });
     expect(config.tools.save_fact.currencies).toBeNull();
   });
 
   it("treats empty units array as null", async () => {
-    const configPath = join(tempDir, "test-config.json");
-    writeFileSync(configPath, JSON.stringify({
+    const config = await loadConfigWith({
       tools: { save_fact: { units: [] } }
-    }));
-    vi.stubEnv("BRAIN_CONFIG", configPath);
-    const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
+    });
     expect(config.tools.save_fact.units).toBeNull();
   });
 
   it("preserves non-empty currencies as enum list", async () => {
-    const configPath = join(tempDir, "test-config.json");
-    writeFileSync(configPath, JSON.stringify({
+    const config = await loadConfigWith({
       tools: { save_fact: { currencies: ["USD", "EUR"] } }
-    }));
-    vi.stubEnv("BRAIN_CONFIG", configPath);
-    const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
+    });
     expect(config.tools.save_fact.currencies).toEqual(["USD", "EUR"]);
   });
 
@@ -143,38 +136,26 @@ describe("loadConfig", () => {
   });
 
   it("produces describe text with no examples when keyExamples is empty", async () => {
-    const configPath = join(tempDir, "test-config.json");
-    writeFileSync(configPath, JSON.stringify({
+    const config = await loadConfigWith({
       tools: { lookup_fact: { keyExamples: [] } }
-    }));
-    vi.stubEnv("BRAIN_CONFIG", configPath);
-    const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
+    });
     expect(config.tools.lookup_fact.keyExamples).toEqual([]);
   });
 
   it("ignores unknown keys in config", async () => {
-    const configPath = join(tempDir, "test-config.json");
-    writeFileSync(configPath, JSON.stringify({
+    const config = await loadConfigWith({
       serverName: "test-brain",
       unknownTopLevel: true,
       tools: { search_brain: { description: "Custom.", unknownField: 42 } }
-    }));
-    vi.stubEnv("BRAIN_CONFIG", configPath);
-    const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
+    });
     expect(config.serverName).toBe("test-brain");
     expect(config.tools.search_brain.description).toBe("Custom.");
   });
 
   it("merges top-level categories", async () => {
-    const configPath = join(tempDir, "test-config.json");
-    writeFileSync(configPath, JSON.stringify({
+    const config = await loadConfigWith({
       categories: ["metric", "status", "blocker"]
-    }));
-    vi.stubEnv("BRAIN_CONFIG", configPath);
-    const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
+    });
     expect(config.categories).toEqual(["metric", "status", "blocker"]);
   });
 });

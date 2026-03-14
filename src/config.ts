@@ -101,10 +101,15 @@ function normalizeConfig(config: BrainConfig): BrainConfig {
   return config;
 }
 
+let _cached: BrainConfig | undefined;
+
 export function loadConfig(): BrainConfig {
+  if (_cached) return _cached;
+
   const configPath = process.env.BRAIN_CONFIG;
   if (!configPath) {
-    return normalizeConfig(structuredClone(DEFAULTS));
+    _cached = normalizeConfig(structuredClone(DEFAULTS));
+    return _cached;
   }
 
   let raw: string;
@@ -116,7 +121,8 @@ export function loadConfig(): BrainConfig {
       "code" in err &&
       (err as NodeJS.ErrnoException).code === "ENOENT"
     ) {
-      return normalizeConfig(structuredClone(DEFAULTS));
+      _cached = normalizeConfig(structuredClone(DEFAULTS));
+      return _cached;
     }
     throw err;
   }
@@ -127,5 +133,6 @@ export function loadConfig(): BrainConfig {
     overrides as Record<string, unknown>,
   ) as unknown as BrainConfig;
 
-  return normalizeConfig(merged);
+  _cached = normalizeConfig(merged);
+  return _cached;
 }

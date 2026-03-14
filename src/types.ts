@@ -54,13 +54,9 @@ function parseEnvList(envVar: string, defaults: readonly string[]): string[] {
 }
 
 const DEFAULT_DOMAINS = [
-  "finance",
-  "property",
-  "travel",
-  "family",
-  "health",
-  "career",
+  "general",
   "project",
+  "reference",
 ] as const;
 
 const DEFAULT_CAPTURE_TYPES = [

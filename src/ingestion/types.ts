@@ -24,13 +24,21 @@ export interface IngestFileResult {
   error?: string;
 }
 
-export interface IngestDirectoryResult {
-  totalFiles: number;
+// --- Shared batch result (#13) ---
+export interface IngestBatchResult {
   ingested: number;
   skipped: number;
   failed: number;
   totalChunks: number;
+}
+
+export interface IngestDirectoryResult extends IngestBatchResult {
+  totalFiles: number;
   fileResults: IngestFileResult[];
+}
+
+export interface IngestGitHubResult extends IngestBatchResult {
+  totalIssues: number;
 }
 
 // Chunking constants
@@ -39,6 +47,16 @@ export const MIN_CHUNK_CHARS = 200;    // ~50 tokens
 export const OVERLAP_CHARS = 800;      // ~200 tokens for hard-split overlap
 
 export type SupportedFormat = "markdown" | "pdf" | "text";
+
+// --- Source type constants (#5) ---
+export const SOURCE_TYPES = {
+  GITHUB_ISSUE: "github_issue_import",
+  PDF: "pdf_import",
+  MARKDOWN: "markdown_import",
+  TEXT: "text_import",
+  CLAUDE_CAPTURE: "claude_capture",
+} as const;
+export type SourceType = (typeof SOURCE_TYPES)[keyof typeof SOURCE_TYPES];
 
 export function detectFormat(filePath: string): SupportedFormat | null {
   const ext = filePath.toLowerCase().split(".").pop();

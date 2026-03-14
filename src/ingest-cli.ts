@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { resolve } from "path";
+import { parseArgs } from "node:util";
 import { ingestFile, ingestDirectory } from "./ingestion/index.js";
 import { detectFormat } from "./ingestion/types.js";
 import { stat } from "fs/promises";
@@ -20,16 +21,30 @@ Examples:
 }
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
+  const argv = process.argv.slice(2);
+  if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
     usage();
   }
 
-  const targetPath = resolve(args[0]);
-  const recursive = args.includes("--recursive");
-  const dryRun = args.includes("--dry-run");
-  const domainIdx = args.indexOf("--domain");
-  const domain = domainIdx >= 0 ? args[domainIdx + 1] : undefined;
+  const { values, positionals } = parseArgs({
+    args: argv,
+    options: {
+      recursive: { type: "boolean", default: false },
+      domain: { type: "string" },
+      "dry-run": { type: "boolean", default: false },
+    },
+    allowPositionals: true,
+    strict: true,
+  });
+
+  if (positionals.length === 0) {
+    usage();
+  }
+
+  const targetPath = resolve(positionals[0]);
+  const recursive = values.recursive!;
+  const dryRun = values["dry-run"]!;
+  const domain = values.domain;
 
   let targetStat;
   try {

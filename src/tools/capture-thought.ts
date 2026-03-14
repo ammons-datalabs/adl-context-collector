@@ -2,6 +2,7 @@ import { query } from "../db.js";
 import { generateEmbedding } from "../services/embedder.js";
 import { extractMetadata } from "../services/metadata-extractor.js";
 import { hashContent } from "../services/hasher.js";
+import { SOURCE_TYPES } from "../ingestion/types.js";
 
 export async function captureThought(args: {
   content: string;
@@ -37,7 +38,7 @@ export async function captureThought(args: {
 
   const result = await query(
     `INSERT INTO captures (content, embedding, type, domain, topics, people, action_items, dates, source_type, content_hash)
-     VALUES ($1, $2::vector, $3, $4, $5, $6, $7, $8, 'claude_capture', $9)
+     VALUES ($1, $2::vector, $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id, captured_at`,
     [
       args.content,
@@ -48,6 +49,7 @@ export async function captureThought(args: {
       metadata.people,
       metadata.action_items,
       JSON.stringify(metadata.dates),
+      SOURCE_TYPES.CLAUDE_CAPTURE,
       contentHash,
     ]
   );

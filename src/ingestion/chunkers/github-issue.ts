@@ -7,8 +7,8 @@ export interface GitHubIssue {
   title: string;
   body: string;
   updatedAt: string;
-  url: string;
-  labels: Array<{ name: string }>;
+  url?: string;
+  labels?: Array<{ name: string }>;
   author: { login: string };
   comments: Array<{
     author: { login: string };

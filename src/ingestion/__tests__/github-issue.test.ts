@@ -1,34 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { chunkGitHubIssue, type GitHubIssue } from "../chunkers/github-issue.js";
+import { chunkGitHubIssue } from "../chunkers/github-issue.js";
 import { MAX_CHUNK_CHARS, MIN_CHUNK_CHARS } from "../types.js";
-
-// Helpers to generate content that reliably exceeds MIN_CHUNK_CHARS (200).
-const PAD =
-  " Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco.";
-
-function makeIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
-  return {
-    number: 42,
-    title: "Fix the widget rendering pipeline",
-    body:
-      "The widget rendering pipeline fails when given a null config object. We need to add a guard clause at the entry point and propagate defaults." +
-      PAD,
-    updatedAt: "2026-03-01T12:00:00Z",
-    url: "https://github.com/org/repo/issues/42",
-    labels: [{ name: "bug" }],
-    author: { login: "alice" },
-    comments: [],
-    ...overrides,
-  };
-}
-
-function substantiveComment(
-  login: string,
-  body: string,
-  date = "2026-03-02T10:00:00Z"
-) {
-  return { author: { login }, body, createdAt: date };
-}
+import { PAD, makeIssue, substantiveComment } from "./github-fixtures.js";
 
 describe("chunkGitHubIssue", () => {
   it("creates a single root chunk for an issue with body and no comments", () => {

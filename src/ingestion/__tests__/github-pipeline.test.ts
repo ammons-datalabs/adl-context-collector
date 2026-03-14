@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { GitHubIssue } from "../chunkers/github-issue.js";
+import { makeIssue } from "./github-fixtures.js";
 
 // Mock external dependencies before importing the module under test
 vi.mock("../../db.js", () => ({
@@ -22,24 +22,8 @@ vi.mock("../../services/hasher.js", () => ({
   hashContent: vi.fn().mockReturnValue("fakehash123"),
 }));
 
-const PAD =
-  " Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco.";
-
-function makeIssue(overrides: Partial<GitHubIssue> = {}): GitHubIssue {
-  return {
-    number: 42,
-    title: "Fix the widget rendering pipeline",
-    body:
-      "The widget rendering pipeline fails when given a null config object. We need to add a guard clause." +
-      PAD,
-    updatedAt: "2026-03-01T12:00:00Z",
-    url: "https://github.com/org/repo/issues/42",
-    labels: [{ name: "bug" }],
-    author: { login: "alice" },
-    comments: [],
-    ...overrides,
-  };
-}
+// hashContent mock always returns "fakehash123", so hashIssueContent also returns "fakehash123"
+const CONTENT_HASH = "fakehash123";
 
 describe("ingestGitHubIssue", () => {
   let queryMock: ReturnType<typeof vi.fn>;
@@ -51,11 +35,12 @@ describe("ingestGitHubIssue", () => {
     queryMock.mockReset();
   });
 
-  it("skips an issue when updated_at matches sources.notes", async () => {
+  it("skips an issue when content hash matches file_hash", async () => {
     const { ingestGitHubIssue } = await import("../github.js");
 
+    // SELECT sources → existing with matching content hash
     queryMock.mockResolvedValueOnce({
-      rows: [{ notes: "2026-03-01T12:00:00Z" }],
+      rows: [{ file_hash: CONTENT_HASH }],
     });
 
     const result = await ingestGitHubIssue(makeIssue(), "org/repo");
@@ -71,51 +56,77 @@ describe("ingestGitHubIssue", () => {
 
     // SELECT sources → empty
     queryMock.mockResolvedValueOnce({ rows: [] });
+    // BEGIN
+    queryMock.mockResolvedValueOnce({});
     // INSERT captures → inserted
     queryMock.mockResolvedValueOnce({ rowCount: 1 });
-    // INSERT sources (upsert)
+    // UPSERT sources
     queryMock.mockResolvedValueOnce({ rowCount: 1 });
+    // COMMIT
+    queryMock.mockResolvedValueOnce({});
 
     const result = await ingestGitHubIssue(makeIssue(), "org/repo");
 
     expect(result.status).toBe("ingested");
     expect(result.chunkCount).toBe(1);
 
-    // Check the source path format
-    const insertCall = queryMock.mock.calls[1];
+    // Check the INSERT captures call (index 2: after SELECT + BEGIN)
+    const insertCall = queryMock.mock.calls[2];
     expect(insertCall[1][8]).toBe("github://org/repo/issues/42"); // source_file
     expect(insertCall[1][10]).toBe("github_issue_import"); // source_type
 
-    // Check the upsert stores updated_at in notes
-    const upsertCall = queryMock.mock.calls[2];
-    expect(upsertCall[1][3]).toBe("2026-03-01T12:00:00Z"); // notes = updatedAt
+    // Check the UPSERT stores content hash in file_hash
+    const upsertCall = queryMock.mock.calls[3];
+    expect(upsertCall[1][1]).toBe(CONTENT_HASH); // file_hash = content hash
   });
 
   it("deletes old captures when re-ingesting a changed issue", async () => {
     const { ingestGitHubIssue } = await import("../github.js");
 
-    // SELECT sources → existing with older updated_at
+    // SELECT sources → existing with different hash (content changed)
     queryMock.mockResolvedValueOnce({
-      rows: [{ notes: "2026-02-01T00:00:00Z" }],
+      rows: [{ file_hash: "oldhash456" }],
     });
+    // BEGIN
+    queryMock.mockResolvedValueOnce({});
     // DELETE old captures
     queryMock.mockResolvedValueOnce({ rowCount: 3 });
     // INSERT captures → inserted
     queryMock.mockResolvedValueOnce({ rowCount: 1 });
-    // INSERT sources (upsert)
+    // UPSERT sources
     queryMock.mockResolvedValueOnce({ rowCount: 1 });
+    // COMMIT
+    queryMock.mockResolvedValueOnce({});
 
-    const result = await ingestGitHubIssue(
-      makeIssue({ updatedAt: "2026-03-08T12:00:00Z" }),
-      "org/repo"
-    );
+    const result = await ingestGitHubIssue(makeIssue(), "org/repo");
 
     expect(result.status).toBe("ingested");
 
-    // Verify DELETE was called for old captures
-    const deleteCall = queryMock.mock.calls[1];
+    // Verify DELETE was called for old captures (index 2: after SELECT + BEGIN)
+    const deleteCall = queryMock.mock.calls[2];
     expect(deleteCall[0]).toContain("DELETE FROM captures");
     expect(deleteCall[1][0]).toBe("github://org/repo/issues/42");
+  });
+
+  it("rolls back transaction when all chunks fail", async () => {
+    const { ingestGitHubIssue } = await import("../github.js");
+
+    // SELECT sources → new issue
+    queryMock.mockResolvedValueOnce({ rows: [] });
+    // BEGIN
+    queryMock.mockResolvedValueOnce({});
+    // INSERT captures → fails
+    queryMock.mockRejectedValueOnce(new Error("DB error"));
+    // ROLLBACK
+    queryMock.mockResolvedValueOnce({});
+
+    const result = await ingestGitHubIssue(makeIssue(), "org/repo");
+
+    expect(result.status).toBe("failed");
+
+    // Verify ROLLBACK was called
+    const rollbackCall = queryMock.mock.calls[3];
+    expect(rollbackCall[0]).toBe("ROLLBACK");
   });
 
   it("reports chunk count in dry-run mode without inserting", async () => {
@@ -130,8 +141,23 @@ describe("ingestGitHubIssue", () => {
 
     expect(result.status).toBe("ingested");
     expect(result.chunkCount).toBe(1);
-    // Only SELECT was called — no INSERT
+    // Only SELECT was called — no transaction
     expect(queryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips via pre-fetched existingHash without querying", async () => {
+    const { ingestGitHubIssue } = await import("../github.js");
+
+    const result = await ingestGitHubIssue(
+      makeIssue(),
+      "org/repo",
+      {},
+      CONTENT_HASH
+    );
+
+    expect(result.status).toBe("skipped");
+    // No queries at all — hash was pre-fetched
+    expect(queryMock).toHaveBeenCalledTimes(0);
   });
 });
 
@@ -154,20 +180,24 @@ describe("ingestGitHubIssues", () => {
       makeIssue({ number: 3, updatedAt: "2026-03-03T00:00:00Z" }),
     ];
 
-    // Issue 1: skip (matching updated_at)
+    // Batch SELECT sources → issue 1 has matching hash, issues 2+3 are new
     queryMock.mockResolvedValueOnce({
-      rows: [{ notes: "2026-03-01T00:00:00Z" }],
+      rows: [
+        { file_path: "github://org/repo/issues/1", file_hash: CONTENT_HASH },
+      ],
     });
 
-    // Issue 2: new, ingest
-    queryMock.mockResolvedValueOnce({ rows: [] }); // SELECT
+    // Issue 2: new → BEGIN, INSERT captures, UPSERT sources, COMMIT
+    queryMock.mockResolvedValueOnce({}); // BEGIN
     queryMock.mockResolvedValueOnce({ rowCount: 1 }); // INSERT captures
     queryMock.mockResolvedValueOnce({ rowCount: 1 }); // UPSERT sources
+    queryMock.mockResolvedValueOnce({}); // COMMIT
 
-    // Issue 3: new, ingest
-    queryMock.mockResolvedValueOnce({ rows: [] }); // SELECT
+    // Issue 3: new → BEGIN, INSERT captures, UPSERT sources, COMMIT
+    queryMock.mockResolvedValueOnce({}); // BEGIN
     queryMock.mockResolvedValueOnce({ rowCount: 1 }); // INSERT captures
     queryMock.mockResolvedValueOnce({ rowCount: 1 }); // UPSERT sources
+    queryMock.mockResolvedValueOnce({}); // COMMIT
 
     const progressMessages: string[] = [];
     const result = await ingestGitHubIssues(issues, "org/repo", {}, (msg) =>
@@ -179,6 +209,9 @@ describe("ingestGitHubIssues", () => {
     expect(result.skipped).toBe(1);
     expect(result.failed).toBe(0);
     expect(result.totalChunks).toBe(2);
+
+    // First query is the batch SELECT
+    expect(queryMock.mock.calls[0][0]).toContain("ANY($1)");
 
     // Progress callback was invoked
     expect(progressMessages.length).toBeGreaterThan(0);

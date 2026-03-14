@@ -1,130 +1,106 @@
 import { query } from "../db.js";
-import { generateEmbedding } from "../services/embedder.js";
-import { extractMetadata } from "../services/metadata-extractor.js";
 import { hashContent } from "../services/hasher.js";
 import { chunkGitHubIssue, type GitHubIssue } from "./chunkers/github-issue.js";
-import type { Chunk } from "./types.js";
-
-export interface IngestGitHubOptions {
-  domain?: string;
-  dryRun?: boolean;
-}
-
-export interface IngestGitHubResult {
-  totalIssues: number;
-  ingested: number;
-  skipped: number;
-  failed: number;
-  totalChunks: number;
-}
+import { processChunksBatch } from "./process-chunk.js";
+import {
+  SOURCE_TYPES,
+  type IngestOptions,
+  type IngestGitHubResult,
+} from "./types.js";
 
 function issueSourcePath(repo: string, issueNumber: number): string {
   return `github://${repo}/issues/${issueNumber}`;
 }
 
-async function processChunk(
-  chunk: Chunk,
-  sourcePath: string,
-  domainOverride?: string
-): Promise<"inserted" | "duplicate" | "failed"> {
-  try {
-    const contentHash = hashContent(chunk.content);
-
-    const [embedding, metadata] = await Promise.all([
-      generateEmbedding(chunk.content),
-      extractMetadata(chunk.content),
-    ]);
-
-    const domain = domainOverride ?? metadata.domain;
-
-    const result = await query(
-      `INSERT INTO captures
-        (content, embedding, type, domain, topics, people, action_items, dates,
-         source_file, source_section, source_type, chunk_index, content_hash)
-       VALUES ($1, $2::vector, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       ON CONFLICT (content_hash) DO NOTHING
-       RETURNING id`,
-      [
-        chunk.content,
-        JSON.stringify(embedding),
-        metadata.type,
-        domain,
-        metadata.topics,
-        metadata.people,
-        metadata.action_items,
-        JSON.stringify(metadata.dates),
-        sourcePath,
-        chunk.metadata.heading ?? chunk.metadata.sourceLabel ?? null,
-        "github_issue_import",
-        chunk.index,
-        contentHash,
-      ]
-    );
-
-    return result.rowCount && result.rowCount > 0 ? "inserted" : "duplicate";
-  } catch {
-    return "failed";
-  }
+/** Hash issue body + comments for content-based change detection (#6, #10). */
+function hashIssueContent(issue: GitHubIssue): string {
+  const content =
+    issue.body +
+    "\0" +
+    issue.comments.map((c) => `${c.author.login}:${c.body}`).join("\0");
+  return hashContent(content);
 }
 
 export async function ingestGitHubIssue(
   issue: GitHubIssue,
   repo: string,
-  options: IngestGitHubOptions = {}
+  options: Pick<IngestOptions, "domain" | "dryRun"> = {},
+  existingHash?: string | null
 ): Promise<{ status: "ingested" | "skipped" | "failed"; chunkCount: number }> {
   const sourcePath = issueSourcePath(repo, issue.number);
+  const contentHash = hashIssueContent(issue);
 
-  // Change detection via updated_at stored in sources.notes
-  const existing = await query(
-    "SELECT notes FROM sources WHERE file_path = $1",
-    [sourcePath]
-  );
+  // --- Change detection (#6): content hash stored in file_hash column ---
+  if (existingHash === undefined) {
+    // Not pre-fetched — query individually
+    const existing = await query(
+      "SELECT file_hash FROM sources WHERE file_path = $1",
+      [sourcePath]
+    );
+    existingHash = existing.rows.length > 0 ? existing.rows[0].file_hash : null;
+  }
 
-  if (existing.rows.length > 0 && existing.rows[0].notes === issue.updatedAt) {
+  if (existingHash === contentHash) {
     return { status: "skipped", chunkCount: 0 };
   }
 
-  // Issue changed or is new — delete old chunks if re-ingesting
-  if (existing.rows.length > 0) {
-    await query("DELETE FROM captures WHERE source_file = $1", [sourcePath]);
-  }
-
   const chunks = chunkGitHubIssue(issue);
+
+  // --- Zero-chunk fix (#4): short issues aren't failures ---
+  if (chunks.length === 0) {
+    return { status: "skipped", chunkCount: 0 };
+  }
 
   if (options.dryRun) {
     return { status: "ingested", chunkCount: chunks.length };
   }
 
-  let failedChunks = 0;
-  let skippedDuplicates = 0;
+  // --- Data loss fix (#1): use transaction so DELETE is rolled back on failure ---
+  await query("BEGIN");
+  try {
+    // Delete old captures if re-ingesting
+    if (existingHash !== null) {
+      await query("DELETE FROM captures WHERE source_file = $1", [sourcePath]);
+    }
 
-  for (const chunk of chunks) {
-    const result = await processChunk(chunk, sourcePath, options.domain);
-    if (result === "failed") failedChunks++;
-    if (result === "duplicate") skippedDuplicates++;
+    // Process chunks with bounded concurrency (#8)
+    const { failed: failedChunks } = await processChunksBatch(
+      chunks,
+      sourcePath,
+      SOURCE_TYPES.GITHUB_ISSUE,
+      options.domain
+    );
+
+    if (failedChunks === chunks.length) {
+      // All chunks failed — rollback to restore old captures
+      await query("ROLLBACK");
+      return { status: "failed", chunkCount: chunks.length };
+    }
+
+    const insertedCount = chunks.length - failedChunks;
+
+    // Upsert sources with content hash (#10)
+    await query(
+      `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (file_path)
+       DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
+      [sourcePath, contentHash, insertedCount]
+    );
+
+    await query("COMMIT");
+
+    return { status: "ingested", chunkCount: chunks.length };
+  } catch (err) {
+    await query("ROLLBACK");
+    throw err;
   }
-
-  const insertedCount = chunks.length - failedChunks - skippedDuplicates;
-
-  // Upsert sources table — store updated_at in notes for change tracking
-  await query(
-    `INSERT INTO sources (file_path, file_hash, capture_count, last_imported, notes)
-     VALUES ($1, $2, $3, NOW(), $4)
-     ON CONFLICT (file_path)
-     DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW(), notes = $4`,
-    [sourcePath, `issue:${issue.number}`, insertedCount, issue.updatedAt]
-  );
-
-  return {
-    status: failedChunks === chunks.length ? "failed" : "ingested",
-    chunkCount: chunks.length,
-  };
 }
 
 export async function ingestGitHubIssues(
   issues: GitHubIssue[],
   repo: string,
-  options: IngestGitHubOptions = {},
+  options: Pick<IngestOptions, "domain" | "dryRun"> = {},
   onProgress?: (message: string) => void
 ): Promise<IngestGitHubResult> {
   const result: IngestGitHubResult = {
@@ -135,13 +111,33 @@ export async function ingestGitHubIssues(
     totalChunks: 0,
   };
 
+  // --- Batch change-detection (#9): single query instead of N ---
+  const sourcePaths = issues.map((i) => issueSourcePath(repo, i.number));
+  const existingRows = await query(
+    "SELECT file_path, file_hash FROM sources WHERE file_path = ANY($1)",
+    [sourcePaths]
+  );
+  const existingMap = new Map<string, string>(
+    existingRows.rows.map((r: { file_path: string; file_hash: string }) => [
+      r.file_path,
+      r.file_hash,
+    ])
+  );
+
   for (let i = 0; i < issues.length; i++) {
     const issue = issues[i];
     onProgress?.(
       `[${i + 1}/${issues.length}] Issue #${issue.number}: ${issue.title}...`
     );
 
-    const issueResult = await ingestGitHubIssue(issue, repo, options);
+    const sp = issueSourcePath(repo, issue.number);
+    const existingHash = existingMap.get(sp) ?? null;
+    const issueResult = await ingestGitHubIssue(
+      issue,
+      repo,
+      options,
+      existingHash
+    );
 
     if (issueResult.status === "ingested") {
       result.ingested++;

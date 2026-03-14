@@ -1,27 +1,33 @@
-import { readFile, readdir, stat } from "fs/promises";
+import { readFile, readdir } from "fs/promises";
 import { join, basename, resolve } from "path";
 import { createHash } from "crypto";
 import { query } from "../db.js";
-import { generateEmbedding } from "../services/embedder.js";
-import { extractMetadata } from "../services/metadata-extractor.js";
-import { hashContent } from "../services/hasher.js";
 import { chunkMarkdown } from "./chunkers/markdown.js";
 import { chunkText } from "./chunkers/text.js";
 import { chunkPdfPages } from "./chunkers/pdf.js";
 import { readPdf } from "./parsers/pdf-reader.js";
+import { processChunksBatch } from "./process-chunk.js";
 import {
   detectFormat,
+  SOURCE_TYPES,
   type Chunk,
   type IngestOptions,
   type IngestFileResult,
   type IngestDirectoryResult,
   type SupportedFormat,
+  type SourceType,
 } from "./types.js";
 
 async function hashFile(filePath: string): Promise<string> {
   const buffer = await readFile(filePath);
   return createHash("sha256").update(buffer).digest("hex");
 }
+
+const FORMAT_TO_SOURCE_TYPE: Record<SupportedFormat, SourceType> = {
+  pdf: SOURCE_TYPES.PDF,
+  markdown: SOURCE_TYPES.MARKDOWN,
+  text: SOURCE_TYPES.TEXT,
+};
 
 async function getChunks(
   filePath: string,
@@ -40,52 +46,6 @@ async function getChunks(
       const { pages } = await readPdf(filePath);
       return chunkPdfPages(pages);
     }
-  }
-}
-
-async function processChunk(
-  chunk: Chunk,
-  filePath: string,
-  format: SupportedFormat,
-  domainOverride?: string
-): Promise<"inserted" | "duplicate" | "failed"> {
-  try {
-    const contentHash = hashContent(chunk.content);
-
-    const [embedding, metadata] = await Promise.all([
-      generateEmbedding(chunk.content),
-      extractMetadata(chunk.content),
-    ]);
-
-    const domain = domainOverride ?? metadata.domain;
-
-    const result = await query(
-      `INSERT INTO captures
-        (content, embedding, type, domain, topics, people, action_items, dates,
-         source_file, source_section, source_type, chunk_index, content_hash)
-       VALUES ($1, $2::vector, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-       ON CONFLICT (content_hash) DO NOTHING
-       RETURNING id`,
-      [
-        chunk.content,
-        JSON.stringify(embedding),
-        metadata.type,
-        domain,
-        metadata.topics,
-        metadata.people,
-        metadata.action_items,
-        JSON.stringify(metadata.dates),
-        filePath,
-        chunk.metadata.heading ?? chunk.metadata.sourceLabel ?? null,
-        format === "pdf" ? "pdf_import" : format === "markdown" ? "markdown_import" : "text_import",
-        chunk.index,
-        contentHash,
-      ]
-    );
-
-    return result.rowCount && result.rowCount > 0 ? "inserted" : "duplicate";
-  } catch (error) {
-    return "failed";
   }
 }
 
@@ -141,14 +101,13 @@ export async function ingestFile(
   }
 
   const chunks = await getChunks(absPath, format);
-  let failedChunks = 0;
-  let skippedDuplicates = 0;
-
-  for (const chunk of chunks) {
-    const result = await processChunk(chunk, absPath, format, options.domain);
-    if (result === "failed") failedChunks++;
-    if (result === "duplicate") skippedDuplicates++;
-  }
+  const { failed: failedChunks, duplicates: skippedDuplicates } =
+    await processChunksBatch(
+      chunks,
+      absPath,
+      FORMAT_TO_SOURCE_TYPE[format],
+      options.domain
+    );
 
   const insertedCount = chunks.length - failedChunks - skippedDuplicates;
 

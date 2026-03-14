@@ -1,4 +1,5 @@
 import { query } from "../db.js";
+import { SOURCE_TYPES } from "../ingestion/types.js";
 
 export async function saveFact(args: {
   domain: string;
@@ -23,7 +24,7 @@ export async function saveFact(args: {
   // Insert new value
   const result = await query(
     `INSERT INTO facts (domain, category, key, value, value_numeric, currency, unit, context, as_of, source_type)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, 'claude_capture')
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10)
      ON CONFLICT (domain, category, key, as_of) DO UPDATE
        SET value = EXCLUDED.value,
            value_numeric = EXCLUDED.value_numeric,
@@ -42,6 +43,7 @@ export async function saveFact(args: {
       args.unit ?? null,
       args.context ?? null,
       asOf,
+      SOURCE_TYPES.CLAUDE_CAPTURE,
     ]
   );
 
