@@ -3,6 +3,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { DOMAINS, CAPTURE_TYPES } from "./types.js";
+import { loadConfig } from "./config.js";
 import { searchBrain } from "./tools/search-brain.js";
 import { lookupFact } from "./tools/lookup-fact.js";
 import { searchFacts } from "./tools/search-facts.js";
@@ -12,15 +13,23 @@ import { listRecent } from "./tools/list-recent.js";
 import { brainStats } from "./tools/brain-stats.js";
 import { ingestDocument } from "./tools/ingest-document.js";
 
+const config = loadConfig();
+
 const server = new McpServer({
-  name: "open-brain",
+  name: config.serverName,
   version: "1.0.0",
 });
+
+// Helper: format example list for .describe() hints
+function exampleList(prefix: string, examples: string[]): string {
+  if (examples.length === 0) return prefix;
+  return `${prefix}, e.g. '${examples.join("', '")}'`;
+}
 
 // 1. Semantic search across captures
 server.tool(
   "search_brain",
-  "Search the personal knowledge base using semantic similarity. Use for questions like 'what did we decide about the mortgage?' or 'what's the plan for Tucker's import?'",
+  config.tools.search_brain.description,
   {
     query: z.string().describe("Natural language search query"),
     domain: z
@@ -48,12 +57,12 @@ server.tool(
 // 2. Precise fact lookup by key
 server.tool(
   "lookup_fact",
-  "Look up a specific fact by key. Use for precise questions like 'what is the Growth Saver balance?' or 'when does the Sweden trip start?'",
+  config.tools.lookup_fact.description,
   {
     key: z
       .string()
       .describe(
-        "The fact key, e.g. 'growth_saver_balance', 'rent_weekly', 'sweden_departure_date'"
+        exampleList("The fact key", config.tools.lookup_fact.keyExamples)
       ),
     domain: z
       .enum(DOMAINS as [string, ...string[]])
@@ -70,7 +79,7 @@ server.tool(
 // 3. Browse/filter facts
 server.tool(
   "search_facts",
-  "Search or list facts. Use for 'show me all account balances' or 'what travel bookings do I have?'",
+  config.tools.search_facts.description,
   {
     domain: z
       .enum(DOMAINS as [string, ...string[]])
@@ -78,9 +87,7 @@ server.tool(
     category: z
       .string()
       .optional()
-      .describe(
-        "Filter by category: account_balance, expense, booking, contact, status, cost, date"
-      ),
+      .describe(`Filter by category: ${config.categories.join(", ")}`),
     search: z
       .string()
       .optional()
@@ -95,10 +102,10 @@ server.tool(
   async (args) => searchFacts(args)
 );
 
-// 4. Save a thought/note/decision from Claude
+// 4. Save a thought/note/decision
 server.tool(
   "capture_thought",
-  "Save a thought, decision, insight, or note to the knowledge base. Content is embedded for semantic search and metadata is extracted automatically.",
+  config.tools.capture_thought.description,
   {
     content: z
       .string()
@@ -118,28 +125,36 @@ server.tool(
 );
 
 // 5. Save/update a structured fact
+const saveFactCurrency = config.tools.save_fact.currencies
+  ? z.enum(config.tools.save_fact.currencies as [string, ...string[]]).optional()
+  : z.string().optional().describe("Currency code (e.g. USD, EUR)");
+
+const saveFactUnit = config.tools.save_fact.units
+  ? z.enum(config.tools.save_fact.units as [string, ...string[]]).optional()
+  : z.string().optional().describe("Recurrence unit (e.g. monthly, annual)");
+
 server.tool(
   "save_fact",
-  "Save or update a structured fact (balance, status, date, cost). Old values are preserved with timestamps for history.",
+  config.tools.save_fact.description,
   {
     domain: z.enum(DOMAINS as [string, ...string[]]),
     category: z
       .string()
-      .describe(
-        "Fact category: account_balance, expense, booking, contact, status, cost, date, preference"
-      ),
+      .describe(`Fact category: ${config.categories.join(", ")}`),
     key: z
       .string()
       .describe(
-        "Stable snake_case identifier, e.g. 'growth_saver_balance', 'tucker_peq_start_date'"
+        exampleList("Stable snake_case identifier", config.tools.save_fact.keyExamples)
       ),
     value: z.string().describe("The value as a readable string"),
     value_numeric: z.number().optional().describe("Numeric value if applicable"),
-    currency: z.enum(["AUD", "USD", "SEK"]).optional(),
-    unit: z
-      .enum(["weekly", "monthly", "annual", "fortnightly", "one-time"])
-      .optional(),
+    currency: saveFactCurrency,
+    unit: saveFactUnit,
     context: z.string().optional().describe("Brief context for this fact"),
+    people: z
+      .array(z.string())
+      .optional()
+      .describe(config.tools.save_fact.peopleDescription),
     as_of: z
       .string()
       .optional()
@@ -151,7 +166,7 @@ server.tool(
 // 6. Browse recent captures
 server.tool(
   "list_recent",
-  "List the most recently captured thoughts. Useful for reviewing recent activity.",
+  config.tools.list_recent.description,
   {
     limit: z.number().min(1).max(50).default(10).optional(),
     domain: z
@@ -168,7 +183,7 @@ server.tool(
 // 7. System overview
 server.tool(
   "brain_stats",
-  "Get statistics about the knowledge base: total captures, facts, breakdown by domain, last capture date.",
+  config.tools.brain_stats.description,
   {},
   async () => brainStats()
 );
@@ -176,7 +191,7 @@ server.tool(
 // 8. Document ingestion
 server.tool(
   "ingest_document",
-  "Ingest a file or directory into the knowledge base. Supports PDF, Markdown, and plain text. Files are chunked, embedded, and metadata-extracted automatically.",
+  config.tools.ingest_document.description,
   {
     path: z.string().describe("Absolute path to a file or directory"),
     domain: z
