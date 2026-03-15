@@ -1,6 +1,6 @@
 import { query } from "../db.js";
 
-export async function brainStats() {
+export async function contextStats() {
   const [captureStats, factStats, domainCaptures, domainFacts, recent] =
     await Promise.all([
       query("SELECT COUNT(*) as count FROM captures"),

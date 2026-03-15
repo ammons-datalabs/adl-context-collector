@@ -16,7 +16,7 @@ export interface CollectorConfig {
     apiKey: string | null;
   };
   tools: {
-    search_brain: { description: string };
+    search_context: { description: string };
     lookup_fact: { description: string; keyExamples: string[] };
     search_facts: { description: string };
     capture_thought: { description: string };
@@ -28,7 +28,7 @@ export interface CollectorConfig {
       peopleDescription: string;
     };
     list_recent: { description: string };
-    brain_stats: { description: string };
+    context_stats: { description: string };
     ingest_document: { description: string };
   };
 }
@@ -49,7 +49,7 @@ const DEFAULTS: CollectorConfig = {
     apiKey: "env:OPENAI_API_KEY",
   },
   tools: {
-    search_brain: {
+    search_context: {
       description: "Search the knowledge base using semantic similarity.",
     },
     lookup_fact: {
@@ -75,7 +75,7 @@ const DEFAULTS: CollectorConfig = {
       description:
         "List the most recently captured thoughts. Useful for reviewing recent activity.",
     },
-    brain_stats: {
+    context_stats: {
       description:
         "Get statistics about the knowledge base: total captures, facts, breakdown by domain, last capture date.",
     },

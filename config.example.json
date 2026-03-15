@@ -14,7 +14,7 @@
   },
   "categories": ["status", "cost", "date", "contact", "preference"],
   "tools": {
-    "search_brain": {
+    "search_context": {
       "description": "Search the knowledge base using semantic similarity."
     }
   }

@@ -78,7 +78,7 @@ describe("loadConfig", () => {
     const { loadConfig } = await import("../config.js");
     const config = loadConfig();
     expect(config.serverName).toBe("context-collector");
-    expect(config.tools.search_brain.description).toContain("semantic similarity");
+    expect(config.tools.search_context.description).toContain("semantic similarity");
     expect(config.tools.save_fact.currencies).toBeNull();
     expect(config.tools.save_fact.units).toBeNull();
   });
@@ -87,14 +87,14 @@ describe("loadConfig", () => {
     const config = await loadConfigWith({
       serverName: "work-brain",
       tools: {
-        search_brain: {
+        search_context: {
           description: "Search work knowledge."
         }
       }
     });
     expect(config.serverName).toBe("work-brain");
-    expect(config.tools.search_brain.description).toBe("Search work knowledge.");
-    expect(config.tools.brain_stats.description).toContain("statistics");
+    expect(config.tools.search_context.description).toBe("Search work knowledge.");
+    expect(config.tools.context_stats.description).toContain("statistics");
     expect(config.tools.lookup_fact.keyExamples).toEqual(["project_status", "deploy_date"]);
   });
 
@@ -146,10 +146,10 @@ describe("loadConfig", () => {
     const config = await loadConfigWith({
       serverName: "test-brain",
       unknownTopLevel: true,
-      tools: { search_brain: { description: "Custom.", unknownField: 42 } }
+      tools: { search_context: { description: "Custom.", unknownField: 42 } }
     });
     expect(config.serverName).toBe("test-brain");
-    expect(config.tools.search_brain.description).toBe("Custom.");
+    expect(config.tools.search_context.description).toBe("Custom.");
   });
 
   it("merges top-level categories", async () => {

@@ -4,13 +4,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { DOMAINS, CAPTURE_TYPES } from "./types.js";
 import { loadConfig } from "./config.js";
-import { searchBrain } from "./tools/search-brain.js";
+import { searchContext } from "./tools/search-context.js";
 import { lookupFact } from "./tools/lookup-fact.js";
 import { searchFacts } from "./tools/search-facts.js";
 import { captureThought } from "./tools/capture-thought.js";
 import { saveFact } from "./tools/save-fact.js";
 import { listRecent } from "./tools/list-recent.js";
-import { brainStats } from "./tools/brain-stats.js";
+import { contextStats } from "./tools/context-stats.js";
 import { ingestDocument } from "./tools/ingest-document.js";
 
 const config = loadConfig();
@@ -28,8 +28,8 @@ function exampleList(prefix: string, examples: string[]): string {
 
 // 1. Semantic search across captures
 server.tool(
-  "search_brain",
-  config.tools.search_brain.description,
+  "search_context",
+  config.tools.search_context.description,
   {
     query: z.string().describe("Natural language search query"),
     domain: z
@@ -51,7 +51,7 @@ server.tool(
       .optional()
       .describe("Minimum similarity threshold (default 0.3)"),
   },
-  async (args) => searchBrain(args)
+  async (args) => searchContext(args)
 );
 
 // 2. Precise fact lookup by key
@@ -182,10 +182,10 @@ server.tool(
 
 // 7. System overview
 server.tool(
-  "brain_stats",
-  config.tools.brain_stats.description,
+  "context_stats",
+  config.tools.context_stats.description,
   {},
-  async () => brainStats()
+  async () => contextStats()
 );
 
 // 8. Document ingestion

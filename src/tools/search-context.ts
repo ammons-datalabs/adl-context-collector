@@ -2,7 +2,7 @@ import { query } from "../db.js";
 import { generateEmbedding } from "../services/embedder.js";
 import { loadConfig } from "../config.js";
 
-export async function searchBrain(args: {
+export async function searchContext(args: {
   query: string;
   domain?: string;
   limit?: number;
