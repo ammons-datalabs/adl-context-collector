@@ -1,8 +1,20 @@
 import { readFileSync } from "fs";
 
-export interface BrainConfig {
+export interface CollectorConfig {
   serverName: string;
   categories: string[];
+  embedder: {
+    url: string;
+    model: string;
+    dimensions: number;
+    apiKey: string | null;
+  };
+  metadataExtractor: {
+    enabled: boolean;
+    url: string;
+    model: string;
+    apiKey: string | null;
+  };
   tools: {
     search_brain: { description: string };
     lookup_fact: { description: string; keyExamples: string[] };
@@ -21,9 +33,21 @@ export interface BrainConfig {
   };
 }
 
-const DEFAULTS: BrainConfig = {
+const DEFAULTS: CollectorConfig = {
   serverName: "context-collector",
   categories: ["status", "cost", "date", "contact", "preference"],
+  embedder: {
+    url: "https://api.openai.com/v1/embeddings",
+    model: "text-embedding-3-small",
+    dimensions: 1536,
+    apiKey: "env:OPENAI_API_KEY",
+  },
+  metadataExtractor: {
+    enabled: true,
+    url: "https://api.openai.com/v1/chat/completions",
+    model: "gpt-4o-mini",
+    apiKey: "env:OPENAI_API_KEY",
+  },
   tools: {
     search_brain: {
       description: "Search the knowledge base using semantic similarity.",
@@ -90,7 +114,7 @@ function deepMerge(
   return result;
 }
 
-function normalizeConfig(config: BrainConfig): BrainConfig {
+function normalizeConfig(config: CollectorConfig): CollectorConfig {
   const sf = config.tools.save_fact;
   if (Array.isArray(sf.currencies) && sf.currencies.length === 0) {
     sf.currencies = null;
@@ -101,12 +125,12 @@ function normalizeConfig(config: BrainConfig): BrainConfig {
   return config;
 }
 
-let _cached: BrainConfig | undefined;
+let _cached: CollectorConfig | undefined;
 
-export function loadConfig(): BrainConfig {
+export function loadConfig(): CollectorConfig {
   if (_cached) return _cached;
 
-  const configPath = process.env.BRAIN_CONFIG;
+  const configPath = process.env.COLLECTOR_CONFIG;
   if (!configPath) {
     _cached = normalizeConfig(structuredClone(DEFAULTS));
     return _cached;
@@ -131,7 +155,7 @@ export function loadConfig(): BrainConfig {
   const merged = deepMerge(
     structuredClone(DEFAULTS) as unknown as Record<string, unknown>,
     overrides as Record<string, unknown>,
-  ) as unknown as BrainConfig;
+  ) as unknown as CollectorConfig;
 
   _cached = normalizeConfig(merged);
   return _cached;
