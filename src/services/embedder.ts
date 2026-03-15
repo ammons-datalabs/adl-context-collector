@@ -1,20 +1,19 @@
-const OPENAI_API_URL = "https://api.openai.com/v1/embeddings";
-const MODEL = "text-embedding-3-small";
+import { loadConfig } from "../config.js";
+import { resolveApiKey } from "./resolve-api-key.js";
 
 export async function generateEmbedding(text: string): Promise<number[]> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("OPENAI_API_KEY not set");
+  const { embedder } = loadConfig();
+  const apiKey = resolveApiKey(embedder.apiKey);
 
-  const response = await fetch(OPENAI_API_URL, {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+
+  const response = await fetch(embedder.url, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      input: text,
-    }),
+    headers,
+    body: JSON.stringify({ model: embedder.model, input: text }),
   });
 
   if (!response.ok) {
