@@ -21,6 +21,22 @@ vi.mock("../../services/metadata-extractor.js", () => ({
 vi.mock("../../services/hasher.js", () => ({
   hashContent: vi.fn().mockReturnValue("fakehash123"),
 }));
+vi.mock("../../config.js", () => ({
+  loadConfig: vi.fn().mockReturnValue({
+    embedder: {
+      url: "https://api.openai.com/v1/embeddings",
+      model: "text-embedding-3-small",
+      dimensions: 1536,
+      apiKey: "env:OPENAI_API_KEY",
+    },
+    metadataExtractor: {
+      enabled: true,
+      url: "https://api.openai.com/v1/chat/completions",
+      model: "gpt-4o-mini",
+      apiKey: "env:OPENAI_API_KEY",
+    },
+  }),
+}));
 
 // hashContent mock always returns "fakehash123", so hashIssueContent also returns "fakehash123"
 const CONTENT_HASH = "fakehash123";
@@ -59,6 +75,8 @@ describe("ingestGitHubIssue", () => {
     // BEGIN
     queryMock.mockResolvedValueOnce({});
     // INSERT captures → inserted
+    queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1 }] });
+    // INSERT capture_embeddings
     queryMock.mockResolvedValueOnce({ rowCount: 1 });
     // UPSERT sources
     queryMock.mockResolvedValueOnce({ rowCount: 1 });
@@ -71,12 +89,14 @@ describe("ingestGitHubIssue", () => {
     expect(result.chunkCount).toBe(1);
 
     // Check the INSERT captures call (index 2: after SELECT + BEGIN)
+    // Parameter positions (0-based): $1=content, $2=type, $3=domain, $4=topics, $5=people,
+    // $6=action_items, $7=dates, $8=source_file, $9=source_section, $10=source_type, ...
     const insertCall = queryMock.mock.calls[2];
-    expect(insertCall[1][8]).toBe("github://org/repo/issues/42"); // source_file
-    expect(insertCall[1][10]).toBe("github_issue_import"); // source_type
+    expect(insertCall[1][7]).toBe("github://org/repo/issues/42"); // source_file
+    expect(insertCall[1][9]).toBe("github_issue_import"); // source_type
 
-    // Check the UPSERT stores content hash in file_hash
-    const upsertCall = queryMock.mock.calls[3];
+    // Check the UPSERT stores content hash in file_hash (index 4: after SELECT + BEGIN + INSERT captures + INSERT capture_embeddings)
+    const upsertCall = queryMock.mock.calls[4];
     expect(upsertCall[1][1]).toBe(CONTENT_HASH); // file_hash = content hash
   });
 
@@ -92,6 +112,8 @@ describe("ingestGitHubIssue", () => {
     // DELETE old captures
     queryMock.mockResolvedValueOnce({ rowCount: 3 });
     // INSERT captures → inserted
+    queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 1 }] });
+    // INSERT capture_embeddings
     queryMock.mockResolvedValueOnce({ rowCount: 1 });
     // UPSERT sources
     queryMock.mockResolvedValueOnce({ rowCount: 1 });
@@ -187,15 +209,17 @@ describe("ingestGitHubIssues", () => {
       ],
     });
 
-    // Issue 2: new → BEGIN, INSERT captures, UPSERT sources, COMMIT
+    // Issue 2: new → BEGIN, INSERT captures, INSERT capture_embeddings, UPSERT sources, COMMIT
     queryMock.mockResolvedValueOnce({}); // BEGIN
-    queryMock.mockResolvedValueOnce({ rowCount: 1 }); // INSERT captures
+    queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 2 }] }); // INSERT captures
+    queryMock.mockResolvedValueOnce({ rowCount: 1 }); // INSERT capture_embeddings
     queryMock.mockResolvedValueOnce({ rowCount: 1 }); // UPSERT sources
     queryMock.mockResolvedValueOnce({}); // COMMIT
 
-    // Issue 3: new → BEGIN, INSERT captures, UPSERT sources, COMMIT
+    // Issue 3: new → BEGIN, INSERT captures, INSERT capture_embeddings, UPSERT sources, COMMIT
     queryMock.mockResolvedValueOnce({}); // BEGIN
-    queryMock.mockResolvedValueOnce({ rowCount: 1 }); // INSERT captures
+    queryMock.mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 3 }] }); // INSERT captures
+    queryMock.mockResolvedValueOnce({ rowCount: 1 }); // INSERT capture_embeddings
     queryMock.mockResolvedValueOnce({ rowCount: 1 }); // UPSERT sources
     queryMock.mockResolvedValueOnce({}); // COMMIT
 

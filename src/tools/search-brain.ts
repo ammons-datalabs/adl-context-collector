@@ -1,5 +1,6 @@
 import { query } from "../db.js";
 import { generateEmbedding } from "../services/embedder.js";
+import { loadConfig } from "../config.js";
 
 export async function searchBrain(args: {
   query: string;
@@ -9,19 +10,33 @@ export async function searchBrain(args: {
 }) {
   const limit = Math.min(args.limit ?? 5, 20);
   const minSim = args.min_similarity ?? 0.3;
+  const { embedder } = loadConfig();
+  const dims = embedder.dimensions;
 
   const embedding = await generateEmbedding(args.query);
 
+  // Dimensions are interpolated into the cast (not parameterizable in SQL).
+  // This is safe: dims is always an integer from config.
   const result = await query(
-    `SELECT id, content, type, domain, topics, people, source_file, content_date,
-            1 - (embedding <=> $1::vector) AS similarity
-     FROM captures
-     WHERE ($2::text IS NULL OR domain = $2)
-       AND embedding IS NOT NULL
-       AND 1 - (embedding <=> $1::vector) >= $3
-     ORDER BY embedding <=> $1::vector
-     LIMIT $4`,
-    [JSON.stringify(embedding), args.domain ?? null, minSim, limit]
+    `SELECT c.id, c.content, c.type, c.domain, c.topics, c.people,
+            c.source_file, c.content_date,
+            1 - (ce.embedding::vector(${dims}) <=> $1::vector(${dims})) AS similarity
+     FROM captures c
+     JOIN capture_embeddings ce ON ce.capture_id = c.id
+     WHERE ce.provider_url = $2
+       AND ce.model = $3
+       AND ($4::text IS NULL OR c.domain = $4)
+       AND 1 - (ce.embedding::vector(${dims}) <=> $1::vector(${dims})) >= $5
+     ORDER BY ce.embedding::vector(${dims}) <=> $1::vector(${dims})
+     LIMIT $6`,
+    [
+      JSON.stringify(embedding),
+      embedder.url,
+      embedder.model,
+      args.domain ?? null,
+      minSim,
+      limit,
+    ]
   );
 
   if (result.rows.length === 0) {
