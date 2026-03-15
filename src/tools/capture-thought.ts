@@ -33,8 +33,8 @@ export async function captureThought(args: {
     extractMetadata(args.content),
   ]);
 
-  const domain = args.domain ?? metadata.domain;
-  const captureType = args.type ?? metadata.type;
+  const domain = args.domain ?? metadata?.domain ?? "general";
+  const captureType = args.type ?? metadata?.type ?? "thought";
 
   const result = await query(
     `INSERT INTO captures (content, embedding, type, domain, topics, people, action_items, dates, source_type, content_hash)
@@ -45,21 +45,24 @@ export async function captureThought(args: {
       JSON.stringify(embedding),
       captureType,
       domain,
-      metadata.topics,
-      metadata.people,
-      metadata.action_items,
-      JSON.stringify(metadata.dates),
+      metadata?.topics ?? [],
+      metadata?.people ?? [],
+      metadata?.action_items ?? [],
+      metadata?.dates ? JSON.stringify(metadata.dates) : "{}",
       SOURCE_TYPES.CLAUDE_CAPTURE,
       contentHash,
     ]
   );
 
   const row = result.rows[0];
+  const topics = metadata?.topics ?? [];
+  const people = metadata?.people ?? [];
+  const actionItems = metadata?.action_items ?? [];
   return {
     content: [
       {
         type: "text" as const,
-        text: `Saved capture #${row.id} at ${row.captured_at}\nDomain: ${domain} | Type: ${captureType}\nTopics: ${metadata.topics.join(", ") || "none"}\nPeople: ${metadata.people.join(", ") || "none"}${metadata.action_items.length > 0 ? `\nAction items: ${metadata.action_items.join("; ")}` : ""}`,
+        text: `Saved capture #${row.id} at ${row.captured_at}\nDomain: ${domain} | Type: ${captureType}\nTopics: ${topics.join(", ") || "none"}\nPeople: ${people.join(", ") || "none"}${actionItems.length > 0 ? `\nAction items: ${actionItems.join("; ")}` : ""}`,
       },
     ],
   };
