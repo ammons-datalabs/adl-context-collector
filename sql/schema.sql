@@ -1,4 +1,4 @@
--- Open Brain Schema
+-- context-collector Schema
 -- Local Postgres + pgvector for personal knowledge base
 
 CREATE EXTENSION IF NOT EXISTS vector;
@@ -9,7 +9,6 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE IF NOT EXISTS captures (
     id              BIGSERIAL PRIMARY KEY,
     content         TEXT NOT NULL,
-    embedding       vector(1536),
 
     -- LLM-extracted metadata
     type            TEXT,
@@ -33,8 +32,6 @@ CREATE TABLE IF NOT EXISTS captures (
     content_hash    TEXT UNIQUE
 );
 
-CREATE INDEX IF NOT EXISTS idx_captures_embedding ON captures
-    USING hnsw (embedding vector_cosine_ops) WITH (m = 16, ef_construction = 64);
 CREATE INDEX IF NOT EXISTS idx_captures_domain ON captures (domain);
 CREATE INDEX IF NOT EXISTS idx_captures_type ON captures (type);
 CREATE INDEX IF NOT EXISTS idx_captures_topics ON captures USING gin (topics);
@@ -42,6 +39,27 @@ CREATE INDEX IF NOT EXISTS idx_captures_people ON captures USING gin (people);
 CREATE INDEX IF NOT EXISTS idx_captures_captured_at ON captures (captured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_captures_content_date ON captures (content_date DESC);
 CREATE INDEX IF NOT EXISTS idx_captures_source_file ON captures (source_file);
+
+-- ============================================================
+-- Table 1b: capture_embeddings (vector embeddings, multi-model)
+-- ============================================================
+CREATE TABLE IF NOT EXISTS capture_embeddings (
+    capture_id   BIGINT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
+    provider_url TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    dimensions   INTEGER NOT NULL,
+    embedding    vector NOT NULL,
+    created_at   TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (capture_id, provider_url, model)
+);
+
+-- HNSW indexes are created per-model by the migration CLI.
+-- Example for OpenAI text-embedding-3-small:
+-- CREATE INDEX idx_embeddings_openai_1536
+--   ON capture_embeddings
+--   USING hnsw ((embedding::vector(1536)) vector_cosine_ops)
+--   WHERE provider_url = 'https://api.openai.com/v1/embeddings'
+--     AND model = 'text-embedding-3-small';
 
 -- ============================================================
 -- Table 2: facts (structured key-value with temporal tracking)
