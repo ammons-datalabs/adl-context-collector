@@ -29,7 +29,7 @@ export async function brainStats() {
     .join("\n");
 
   const text = [
-    `**Brain Stats**`,
+    `**Knowledge Base Stats**`,
     `Total captures: ${totalCaptures}`,
     `Total active facts: ${totalFacts}`,
     `Last capture: ${lastCapture}`,
