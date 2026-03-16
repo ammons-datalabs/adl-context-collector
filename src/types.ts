@@ -10,7 +10,6 @@ export interface CaptureMetadata {
 export interface CaptureRow {
   id: number;
   content: string;
-  embedding: number[] | null;
   type: string | null;
   domain: string | null;
   topics: string[] | null;
@@ -54,13 +53,9 @@ function parseEnvList(envVar: string, defaults: readonly string[]): string[] {
 }
 
 const DEFAULT_DOMAINS = [
-  "finance",
-  "property",
-  "travel",
-  "family",
-  "health",
-  "career",
+  "general",
   "project",
+  "reference",
 ] as const;
 
 const DEFAULT_CAPTURE_TYPES = [
@@ -74,8 +69,8 @@ const DEFAULT_CAPTURE_TYPES = [
   "reference",
 ] as const;
 
-export const DOMAINS = parseEnvList("BRAIN_DOMAINS", DEFAULT_DOMAINS);
-export const CAPTURE_TYPES = parseEnvList("BRAIN_CAPTURE_TYPES", DEFAULT_CAPTURE_TYPES);
+export const DOMAINS = parseEnvList("COLLECTOR_DOMAINS", DEFAULT_DOMAINS);
+export const CAPTURE_TYPES = parseEnvList("COLLECTOR_CAPTURE_TYPES", DEFAULT_CAPTURE_TYPES);
 
 // Runtime types (no longer compile-time unions since values are configurable)
 export type Domain = string;

@@ -1,0 +1,21 @@
+{
+  "serverName": "my-context",
+  "embedder": {
+    "url": "https://api.openai.com/v1/embeddings",
+    "model": "text-embedding-3-small",
+    "dimensions": 1536,
+    "apiKey": "env:OPENAI_API_KEY"
+  },
+  "metadataExtractor": {
+    "enabled": true,
+    "url": "https://api.openai.com/v1/chat/completions",
+    "model": "gpt-4o-mini",
+    "apiKey": "env:OPENAI_API_KEY"
+  },
+  "categories": ["status", "cost", "date", "contact", "preference"],
+  "tools": {
+    "search_context": {
+      "description": "Search the knowledge base using semantic similarity."
+    }
+  }
+}
