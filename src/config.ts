@@ -2,6 +2,7 @@ import { readFileSync } from "fs";
 
 export interface CollectorConfig {
   serverName: string;
+  vaultRoot: string | null;
   categories: string[];
   embedder: {
     url: string;
@@ -30,11 +31,13 @@ export interface CollectorConfig {
     list_recent: { description: string };
     context_stats: { description: string };
     ingest_document: { description: string };
+    project_pulse: { description: string };
   };
 }
 
 const DEFAULTS: CollectorConfig = {
   serverName: "context-collector",
+  vaultRoot: null,
   categories: ["status", "cost", "date", "contact", "preference"],
   embedder: {
     url: "https://api.openai.com/v1/embeddings",
@@ -82,6 +85,10 @@ const DEFAULTS: CollectorConfig = {
     ingest_document: {
       description:
         "Ingest a file or directory into the knowledge base. Supports PDF, Markdown, and plain text. Files are chunked, embedded, and metadata-extracted automatically.",
+    },
+    project_pulse: {
+      description:
+        "Get current project status across all tracked repos. Returns PRs awaiting your review, your PRs pending review, recent merges, new issues, and notable activity — ordered by recency. Use when the user asks about updates, what needs attention, project status, or what's changed.",
     },
   },
 };

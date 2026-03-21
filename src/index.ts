@@ -12,6 +12,7 @@ import { saveFact } from "./tools/save-fact.js";
 import { listRecent } from "./tools/list-recent.js";
 import { contextStats } from "./tools/context-stats.js";
 import { ingestDocument } from "./tools/ingest-document.js";
+import { projectPulse } from "./tools/project-pulse.js";
 
 const config = loadConfig();
 
@@ -210,6 +211,31 @@ server.tool(
       .describe("Show what would be ingested without writing"),
   },
   async (args) => ingestDocument(args)
+);
+
+// 9. Project pulse — cross-repo status
+server.tool(
+  "project_pulse",
+  config.tools.project_pulse.description,
+  {
+    repo: z.string().optional().describe(
+      "Filter to a specific repo (e.g. 'taxonomy-builder'). Omit for cross-repo view."
+    ),
+  },
+  async (args) => {
+    const vaultRoot = config.vaultRoot;
+    if (!vaultRoot) {
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({
+            error: "vaultRoot not configured. Add vaultRoot to your work-vault config JSON.",
+          }),
+        }],
+      };
+    }
+    return projectPulse({ ...args, vaultRoot });
+  }
 );
 
 // Start server
