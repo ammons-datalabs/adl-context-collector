@@ -8,7 +8,8 @@
     "ingest": "tsx src/ingest-cli.ts",
     "ingest-github": "tsx src/ingest-github.ts",
     "migrate-schema": "tsx src/migrate-schema.ts",
-    "migrate-embeddings": "tsx src/migrate-embeddings.ts"
+    "migrate-embeddings": "tsx src/migrate-embeddings.ts",
+    "sync-vault": "tsx src/sync-vault-index.ts"
   },
   "keywords": [],
   "author": "",
@@ -17,14 +18,18 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
     "dotenv": "^17.3.1",
+    "js-yaml": "^4.1.1",
     "pdf-parse": "^2.4.5",
     "pg": "^8.20.0",
     "pgvector": "^0.2.1",
+    "picomatch": "^4.0.4",
     "zod": "^3.24.2"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "@types/node": "^25.3.5",
     "@types/pg": "^8.18.0",
+    "@types/picomatch": "^4.0.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
