@@ -3,6 +3,7 @@ import { readFileSync } from "fs";
 export interface CollectorConfig {
   serverName: string;
   vaultRoot: string | null;
+  peopleFile: string | null;
   categories: string[];
   embedder: {
     url: string;
@@ -38,6 +39,7 @@ export interface CollectorConfig {
 const DEFAULTS: CollectorConfig = {
   serverName: "context-collector",
   vaultRoot: null,
+  peopleFile: null,
   categories: ["status", "cost", "date", "contact", "preference"],
   embedder: {
     url: "https://api.openai.com/v1/embeddings",
