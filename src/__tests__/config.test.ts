@@ -196,4 +196,16 @@ describe("loadConfig", () => {
     expect(config.metadataExtractor.enabled).toBe(false);
     expect(config.metadataExtractor.model).toBe("gpt-4o-mini");
   });
+
+  it("loads peopleFile from JSON config", async () => {
+    const config = await loadConfigWith({
+      peopleFile: "people.yaml",
+    });
+    expect(config.peopleFile).toBe("people.yaml");
+  });
+
+  it("defaults peopleFile to null when not in JSON config", async () => {
+    const config = await loadConfigWith({});
+    expect(config.peopleFile).toBeNull();
+  });
 });
