@@ -3,6 +3,7 @@ import { generateEmbedding } from "../services/embedder.js";
 import { extractMetadata } from "../services/metadata-extractor.js";
 import { hashContent } from "../services/hasher.js";
 import { loadConfig } from "../config.js";
+import { canonicalizePeople } from "../services/people.js";
 import type { Chunk, SourceType } from "./types.js";
 
 export type ChunkResult = "inserted" | "duplicate" | "failed";
@@ -24,6 +25,9 @@ export async function processChunk(
     const { embedder } = loadConfig();
     const domain = domainOverride ?? metadata?.domain ?? null;
 
+    const people = canonicalizePeople(metadata?.people);
+    const peopleArg = people.length > 0 ? people : null;
+
     const captureResult = await query(
       `INSERT INTO captures
         (content, type, domain, topics, people, action_items, dates,
@@ -36,7 +40,7 @@ export async function processChunk(
         metadata?.type ?? null,
         domain,
         metadata?.topics ?? null,
-        metadata?.people ?? null,
+        peopleArg,
         metadata?.action_items ?? null,
         metadata?.dates ? JSON.stringify(metadata.dates) : null,
         sourcePath,
