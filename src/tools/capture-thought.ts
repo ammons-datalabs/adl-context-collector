@@ -4,6 +4,7 @@ import { extractMetadata } from "../services/metadata-extractor.js";
 import { hashContent } from "../services/hasher.js";
 import { loadConfig } from "../config.js";
 import { SOURCE_TYPES } from "../ingestion/types.js";
+import { canonicalizePeople } from "../services/people.js";
 
 export async function captureThought(args: {
   content: string;
@@ -50,7 +51,7 @@ export async function captureThought(args: {
         captureType,
         domain,
         metadata?.topics ?? [],
-        metadata?.people ?? [],
+        canonicalizePeople(metadata?.people),
         metadata?.action_items ?? [],
         metadata?.dates ? JSON.stringify(metadata.dates) : "{}",
         SOURCE_TYPES.CLAUDE_CAPTURE,
@@ -67,7 +68,7 @@ export async function captureThought(args: {
     await query("COMMIT");
 
     const topics = metadata?.topics ?? [];
-    const people = metadata?.people ?? [];
+    const people = canonicalizePeople(metadata?.people);
     const actionItems = metadata?.action_items ?? [];
     return {
       content: [
