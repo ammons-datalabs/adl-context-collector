@@ -7,6 +7,7 @@
     "test": "vitest run",
     "ingest": "tsx src/ingest-cli.ts",
     "ingest-github": "tsx src/ingest-github.ts",
+    "migrate-people": "tsx src/migrate-people.ts",
     "migrate-schema": "tsx src/migrate-schema.ts",
     "migrate-embeddings": "tsx src/migrate-embeddings.ts",
     "sync-vault": "tsx src/sync-vault-index.ts"
