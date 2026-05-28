@@ -1,5 +1,6 @@
 import { query } from "../db.js";
 import { SOURCE_TYPES } from "../ingestion/types.js";
+import { canonicalizePeople } from "../services/people.js";
 
 export async function saveFact(args: {
   domain: string;
@@ -14,6 +15,7 @@ export async function saveFact(args: {
   as_of?: string;
 }) {
   const asOf = args.as_of ?? new Date().toISOString().split("T")[0];
+  const people = canonicalizePeople(args.people);
 
   // Mark previous value as superseded
   await query(
@@ -44,7 +46,7 @@ export async function saveFact(args: {
       args.currency ?? null,
       args.unit ?? null,
       args.context ?? null,
-      args.people ?? null,
+      people.length > 0 ? people : null,
       asOf,
       SOURCE_TYPES.CLAUDE_CAPTURE,
     ]
@@ -54,7 +56,7 @@ export async function saveFact(args: {
     content: [
       {
         type: "text" as const,
-        text: `Saved fact #${result.rows[0].id}: ${args.domain}/${args.category}/${args.key} = ${args.value}${args.currency ? ` ${args.currency}` : ""} (as of ${asOf})${args.people?.length ? `\nPeople: ${args.people.join(", ")}` : ""}`,
+        text: `Saved fact #${result.rows[0].id}: ${args.domain}/${args.category}/${args.key} = ${args.value}${args.currency ? ` ${args.currency}` : ""} (as of ${asOf})${people.length > 0 ? `\nPeople: ${people.join(", ")}` : ""}`,
       },
     ],
   };
