@@ -40,7 +40,8 @@ describe("config-driven domains", () => {
     const { CAPTURE_TYPES } = await import("../types.js");
     expect(CAPTURE_TYPES).toContain("thought");
     expect(CAPTURE_TYPES).toContain("decision");
-    expect(CAPTURE_TYPES.length).toBe(8);
+    expect(CAPTURE_TYPES).toContain("review");
+    expect(CAPTURE_TYPES.length).toBe(9);
   });
 
   it("parses COLLECTOR_CAPTURE_TYPES from environment", async () => {

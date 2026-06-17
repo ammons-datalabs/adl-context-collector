@@ -11,6 +11,7 @@ export interface Chunk {
 
 export interface IngestOptions {
   domain?: string;
+  type?: string;
   recursive?: boolean;
   dryRun?: boolean;
 }

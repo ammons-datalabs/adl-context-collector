@@ -7,6 +7,7 @@ import { chunkText } from "./chunkers/text.js";
 import { chunkPdfPages } from "./chunkers/pdf.js";
 import { readPdf } from "./parsers/pdf-reader.js";
 import { processChunksBatch } from "./process-chunk.js";
+import { parseFrontmatterOverrides } from "./frontmatter.js";
 import {
   detectFormat,
   SOURCE_TYPES,
@@ -101,12 +102,19 @@ export async function ingestFile(
   }
 
   const chunks = await getChunks(absPath, format);
+  // A generated doc can declare its classification in frontmatter, overriding the
+  // LLM extractor (which, for example, mistakes threaded review files for meetings).
+  const fmOverrides =
+    format === "markdown"
+      ? parseFrontmatterOverrides(await readFile(absPath, "utf-8"))
+      : {};
   const { failed: failedChunks, duplicates: skippedDuplicates } =
     await processChunksBatch(
       chunks,
       absPath,
       FORMAT_TO_SOURCE_TYPE[format],
-      options.domain
+      options.domain,
+      options.type ?? fmOverrides.type
     );
 
   const insertedCount = chunks.length - failedChunks - skippedDuplicates;

@@ -61,3 +61,42 @@ describe("processChunk people canonicalization", () => {
     expect(peopleArg).toEqual(["adam", "andrew"]);
   });
 });
+
+describe("processChunk type override", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("uses the type override instead of the LLM-extracted type", async () => {
+    const { query } = await import("../../db.js");
+    const { extractMetadata } = await import("../../services/metadata-extractor.js");
+    (extractMetadata as ReturnType<typeof vi.fn>).mockResolvedValue({
+      type: "meeting", // what the LLM would (wrongly) infer
+      domain: "process",
+      topics: ["t"],
+      people: [],
+      action_items: [],
+      dates: null,
+    });
+    (query as ReturnType<typeof vi.fn>).mockResolvedValue({
+      rowCount: 1,
+      rows: [{ id: 1 }],
+    });
+
+    const { processChunk } = await import("../process-chunk.js");
+    await processChunk(
+      { content: "hello", index: 0, metadata: {} } as never,
+      "test.md",
+      "markdown_import" as never,
+      "process", // domainOverride
+      "review", // typeOverride
+    );
+
+    const insertCall = (query as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].includes("INSERT INTO captures"),
+    );
+    expect(insertCall).toBeDefined();
+    const typeArg = insertCall![1][1]; // 2nd param ($2) is type
+    expect(typeArg).toBe("review");
+  });
+});

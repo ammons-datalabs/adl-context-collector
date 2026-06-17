@@ -12,7 +12,8 @@ export async function processChunk(
   chunk: Chunk,
   sourcePath: string,
   sourceType: SourceType,
-  domainOverride?: string
+  domainOverride?: string,
+  typeOverride?: string
 ): Promise<ChunkResult> {
   try {
     const contentHash = hashContent(chunk.content);
@@ -24,6 +25,7 @@ export async function processChunk(
 
     const { embedder } = loadConfig();
     const domain = domainOverride ?? metadata?.domain ?? null;
+    const type = typeOverride ?? metadata?.type ?? null;
 
     const people = canonicalizePeople(metadata?.people);
     const peopleArg = people.length > 0 ? people : null;
@@ -37,7 +39,7 @@ export async function processChunk(
        RETURNING id`,
       [
         chunk.content,
-        metadata?.type ?? null,
+        type,
         domain,
         metadata?.topics ?? null,
         peopleArg,
@@ -77,6 +79,7 @@ export async function processChunksBatch(
   sourcePath: string,
   sourceType: SourceType,
   domainOverride?: string,
+  typeOverride?: string,
   concurrency = 5
 ): Promise<{ failed: number; duplicates: number }> {
   let failed = 0;
@@ -86,7 +89,7 @@ export async function processChunksBatch(
     const batch = chunks.slice(i, i + concurrency);
     const results = await Promise.all(
       batch.map((chunk) =>
-        processChunk(chunk, sourcePath, sourceType, domainOverride)
+        processChunk(chunk, sourcePath, sourceType, domainOverride, typeOverride)
       )
     );
     for (const r of results) {

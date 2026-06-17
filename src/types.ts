@@ -67,6 +67,7 @@ const DEFAULT_CAPTURE_TYPES = [
   "insight",
   "plan",
   "reference",
+  "review",
 ] as const;
 
 export const DOMAINS = parseEnvList("COLLECTOR_DOMAINS", DEFAULT_DOMAINS);
