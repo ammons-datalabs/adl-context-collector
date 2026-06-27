@@ -209,4 +209,22 @@ describe("loadConfig", () => {
     const config = await loadConfigWith({});
     expect(config.peopleFile).toBeNull();
   });
+
+  it("passes an indexSync block through verbatim from JSON config", async () => {
+    const config = await loadConfigWith({
+      indexSync: {
+        include: ["projects/*", "meetings"],
+        exclude: ["templates", "**/dashboard.md"],
+      },
+    });
+    expect(config.indexSync).toEqual({
+      include: ["projects/*", "meetings"],
+      exclude: ["templates", "**/dashboard.md"],
+    });
+  });
+
+  it("defaults indexSync to null when not in JSON config", async () => {
+    const config = await loadConfigWith({});
+    expect(config.indexSync).toBeNull();
+  });
 });

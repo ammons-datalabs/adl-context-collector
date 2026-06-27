@@ -34,6 +34,11 @@ export interface CollectorConfig {
     ingest_document: { description: string };
     project_pulse: { description: string };
   };
+  indexSync?: {
+    include?: string[];
+    exclude?: string[];
+    extensions?: string[];
+  } | null;
 }
 
 const DEFAULTS: CollectorConfig = {
@@ -93,6 +98,7 @@ const DEFAULTS: CollectorConfig = {
         "Get current project status across all tracked repos. Returns PRs awaiting your review, your PRs pending review, recent merges, new issues, and notable activity — ordered by recency. Use when the user asks about updates, what needs attention, project status, or what's changed.",
     },
   },
+  indexSync: null,
 };
 
 function deepMerge(
