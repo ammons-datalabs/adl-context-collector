@@ -108,6 +108,8 @@ export async function syncVaultIndex(
       result.failedCount++;
       const msg = err instanceof Error ? err.message : String(err);
       result.failures.push({ path: relPath, error: msg });
+      // Retain the manifest entry so the deletion is retried next run.
+      updatedFiles[relPath] = manifest.files[relPath];
       onProgress?.(`[error] ${relPath} → ${msg}`);
     }
   }
@@ -142,11 +144,27 @@ async function processFile(
 
     const ingestResult = await ingestFile(file.absolutePath);
 
+    if (ingestResult.status === "failed") {
+      result.failedCount++;
+      const msg = ingestResult.error ?? "ingest reported failure";
+      result.failures.push({ path: file.relativePath, error: msg });
+      onProgress?.(`[error] ${file.relativePath} → ${msg}`);
+      return; // do not record mtime; retried next run
+    }
+
     if (label === "new") result.newCount++;
     else result.changedCount++;
 
-    // Only update manifest for successful files
+    // Only update manifest for successful (or content-skipped) files.
     updatedFiles[file.relativePath] = { mtime_ms: file.mtimeMs };
+
+    if (ingestResult.failedChunks > 0) {
+      // Partial failure: indexed but incomplete. Record mtime (avoid retrying
+      // a deterministic bad chunk forever) but surface it.
+      onProgress?.(
+        `[warn] ${file.relativePath} → ${ingestResult.failedChunks}/${ingestResult.chunkCount} chunks failed (recorded)`
+      );
+    }
 
     onProgress?.(
       `[${label}] ${file.relativePath} → ${ingestResult.chunkCount} chunks` +

@@ -297,4 +297,94 @@ describe("syncVaultIndex", () => {
     expect(savedManifest.last_run).not.toBe(priorLastRun);
     expect(savedManifest.last_run).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
+
+  it("counts a resolved status:failed ingest as a failure, not a success", async () => {
+    const { walkVault } = await import("../walker.js");
+    const { loadManifest, saveManifest, computeSyncPlan } = await import(
+      "../manifest.js"
+    );
+    const { ingestFile } = await import("../../ingestion/index.js");
+    const { syncVaultIndex } = await import("../orchestrator.js");
+
+    const bad = makeFile("bad.md");
+    (walkVault as ReturnType<typeof vi.fn>).mockResolvedValue([bad]);
+    (loadManifest as ReturnType<typeof vi.fn>).mockResolvedValue({
+      last_run: null,
+      files: {},
+    });
+    (computeSyncPlan as ReturnType<typeof vi.fn>).mockReturnValue({
+      newFiles: [bad],
+      changedFiles: [],
+      deletedPaths: [],
+      unchangedPaths: [],
+    });
+    // ingestFile resolves (does not throw) with status "failed"
+    (ingestFile as ReturnType<typeof vi.fn>).mockResolvedValue({
+      filePath: "/vault/bad.md",
+      status: "failed",
+      chunkCount: 2,
+      failedChunks: 2,
+      skippedDuplicates: 0,
+      error: "all chunks failed",
+    });
+    (saveManifest as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+    const result = await syncVaultIndex({
+      vaultRoot: "/vault",
+      include: ["**"],
+      exclude: [],
+      extensions: [".md"],
+      dryRun: false,
+      force: false,
+      verbose: false,
+    });
+
+    expect(result.failedCount).toBe(1);
+    expect(result.newCount).toBe(0);
+    expect(result.failures[0].path).toBe("bad.md");
+    // mtime NOT recorded -> retried next run
+    const saved = (saveManifest as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(saved.files["bad.md"]).toBeUndefined();
+  });
+
+  it("retains the manifest entry when a deletion throws, so it retries next run", async () => {
+    const { walkVault } = await import("../walker.js");
+    const { loadManifest, saveManifest, computeSyncPlan } = await import(
+      "../manifest.js"
+    );
+    const { deleteBySource } = await import("../../ingestion/cleanup.js");
+    const { syncVaultIndex } = await import("../orchestrator.js");
+
+    (walkVault as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (loadManifest as ReturnType<typeof vi.fn>).mockResolvedValue({
+      last_run: null,
+      files: { "gone.md": { mtime_ms: 50 } },
+    });
+    (computeSyncPlan as ReturnType<typeof vi.fn>).mockReturnValue({
+      newFiles: [],
+      changedFiles: [],
+      deletedPaths: ["gone.md"],
+      unchangedPaths: [],
+    });
+    (deleteBySource as ReturnType<typeof vi.fn>).mockRejectedValue(
+      new Error("DB down")
+    );
+    (saveManifest as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+
+    const result = await syncVaultIndex({
+      vaultRoot: "/vault",
+      include: ["**"],
+      exclude: [],
+      extensions: [".md"],
+      dryRun: false,
+      force: false,
+      verbose: false,
+    });
+
+    expect(result.failedCount).toBe(1);
+    expect(result.failures[0].path).toBe("gone.md");
+    const saved = (saveManifest as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    // entry retained so next run still sees it as a pending deletion
+    expect(saved.files["gone.md"]).toEqual({ mtime_ms: 50 });
+  });
 });
