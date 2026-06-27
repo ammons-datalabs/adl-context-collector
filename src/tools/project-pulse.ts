@@ -13,6 +13,7 @@ interface StatusJson {
   recent_activity_on_your_prs?: ActivityEntry[];
   demoted_reviews?: PrEntry[];
   stale_filtered?: number;
+  worked_on_recently?: boolean;
   summary?: {
     open_issues: number;
     open_prs: number;
@@ -41,6 +42,7 @@ interface IssueEntry {
   state: string;
   assignee: string;
   created_at: string;
+  updated_at: string;
   labels: string[];
 }
 
@@ -56,10 +58,33 @@ interface ActivityEntry {
 type ActionItem = (PrEntry | ActivityEntry) & { repo: string };
 type TeamItem = (PrEntry | IssueEntry) & { repo: string; activity_type: string };
 
+// Open issues surfaced for awareness — kept in their own bucket so a busy merge
+// window can never starve them. Bounded by a recency window, not a count cap
+// fighting merges for slots.
+const DAY_MS = 86_400_000;
+const ISSUE_WINDOW_DAYS = 14; // no activity for this long -> falls off
+const ISSUE_NEW_DAYS = 2; // created within this -> "new"; anything else still
+//                           in the window is "active" (no quiet/unmarked state)
+const ISSUE_CAP = 50; // safety bound
+
+interface IssueAwarenessItem {
+  number: number;
+  title: string;
+  repo: string;
+  assignee: string;
+  created_at: string;
+  updated_at: string;
+  labels: string[];
+  gold: boolean; // repo is one I've worked in lately (star marker)
+  is_new: boolean; // created within ISSUE_NEW_DAYS
+  is_active: boolean; // in the window but not brand new (recycle marker)
+}
+
 interface PulseResult {
   as_of: string;
   needs_your_action: ActionItem[];
   your_prs_waiting: (PrEntry & { repo: string })[];
+  recent_issues: IssueAwarenessItem[];
   team_activity: TeamItem[];
   stale_filtered: number;
   data_age_minutes: number;
@@ -105,6 +130,7 @@ export async function projectPulse(args: {
           as_of: new Date().toISOString(),
           needs_your_action: [],
           your_prs_waiting: [],
+          recent_issues: [],
           team_activity: [],
           stale_filtered: 0,
           data_age_minutes: -1,
@@ -123,8 +149,10 @@ export async function projectPulse(args: {
   let oldestUpdate = Date.now();
   let totalStale = 0;
 
+  const now = Date.now();
   const needsAction: ActionItem[] = [];
   const prsWaiting: (PrEntry & { repo: string })[] = [];
+  const issuesAwareness: IssueAwarenessItem[] = [];
   const teamActivity: TeamItem[] = [];
 
   for (const status of filtered) {
@@ -163,9 +191,24 @@ export async function projectPulse(args: {
       teamActivity.push({ ...pr, repo: status.repo, activity_type: "review_covered" });
     }
 
-    // Team activity — recent issues
+    // Open issues — awareness (own bucket; not capped by team_activity)
     for (const issue of status.recent_issues ?? []) {
-      teamActivity.push({ ...issue, repo: status.repo, activity_type: "issue" });
+      const updatedAgeDays = (now - new Date(issue.updated_at).getTime()) / DAY_MS;
+      if (updatedAgeDays > ISSUE_WINDOW_DAYS) continue; // gone quiet -> falls off
+      const createdAgeDays = (now - new Date(issue.created_at).getTime()) / DAY_MS;
+      const isNew = createdAgeDays <= ISSUE_NEW_DAYS;
+      issuesAwareness.push({
+        number: issue.number,
+        title: issue.title,
+        repo: status.repo,
+        assignee: issue.assignee,
+        created_at: issue.created_at,
+        updated_at: issue.updated_at,
+        labels: issue.labels,
+        gold: status.worked_on_recently ?? false,
+        is_new: isNew,
+        is_active: !isNew, // in-window and not new (window filter guarantees recency)
+      });
     }
   }
 
@@ -177,12 +220,14 @@ export async function projectPulse(args: {
 
   needsAction.sort((a, b) => getTimestamp(b).localeCompare(getTimestamp(a)));
   prsWaiting.sort((a, b) => getTimestamp(b).localeCompare(getTimestamp(a)));
+  issuesAwareness.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
   teamActivity.sort((a, b) => getTimestamp(b).localeCompare(getTimestamp(a)));
 
   const result: PulseResult = {
     as_of: new Date().toISOString(),
     needs_your_action: needsAction,
     your_prs_waiting: prsWaiting,
+    recent_issues: issuesAwareness.slice(0, ISSUE_CAP),
     team_activity: teamActivity.slice(0, 30),
     stale_filtered: totalStale,
     data_age_minutes: Math.round((Date.now() - oldestUpdate) / 60000),
