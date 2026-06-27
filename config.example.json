@@ -12,7 +12,7 @@
     "model": "gpt-4o-mini",
     "apiKey": "env:OPENAI_API_KEY"
   },
-  "categories": ["status", "cost", "date", "contact", "preference"],
+  "categories": ["status", "cost", "date", "contact", "preference", "metric", "location", "definition"],
   "tools": {
     "search_context": {
       "description": "Search the knowledge base using semantic similarity."
