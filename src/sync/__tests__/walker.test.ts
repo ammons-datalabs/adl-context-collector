@@ -104,4 +104,20 @@ describe("walkVault", () => {
     expect(relPaths).toContain("templates/template.md");
     expect(relPaths).not.toContain(".hidden/secret.md");
   });
+
+  it("excludes individual files by glob (e.g. **/dashboard.md), not just directories", async () => {
+    const root = await createFixture();
+    await writeFile(join(root, "projects/foo/dashboard.md"), "# Dashboard");
+
+    const files = await walkVault(root, {
+      include: ["projects/*"],
+      exclude: ["**/dashboard.md"],
+      extensions: [".md"],
+    });
+
+    const rel = files.map((f) => f.relativePath);
+    expect(rel).not.toContain("projects/foo/dashboard.md");
+    // sibling content under the same tree is kept
+    expect(rel).toContain("projects/foo/slack/thread.md");
+  });
 });
