@@ -40,7 +40,7 @@ const DEFAULTS: CollectorConfig = {
   serverName: "context-collector",
   vaultRoot: null,
   peopleFile: null,
-  categories: ["status", "cost", "date", "contact", "preference"],
+  categories: ["status", "cost", "date", "contact", "preference", "metric", "location", "definition"],
   embedder: {
     url: "https://api.openai.com/v1/embeddings",
     model: "text-embedding-3-small",
