@@ -1,14 +1,12 @@
 import { query, withTransaction } from "../db.js";
 import { hashContent } from "../services/hasher.js";
 import { chunkGitHubIssue, type GitHubIssue } from "./chunkers/github-issue.js";
-import { processChunksBatch } from "./process-chunk.js";
+import { prepareChunks, persistChunks } from "./process-chunk.js";
 import {
   SOURCE_TYPES,
   type IngestOptions,
   type IngestGitHubResult,
 } from "./types.js";
-
-class AllChunksFailedError extends Error {}
 
 function issueSourcePath(repo: string, issueNumber: number): string {
   return `github://${repo}/issues/${issueNumber}`;
@@ -57,41 +55,33 @@ export async function ingestGitHubIssue(
     return { status: "ingested", chunkCount: chunks.length };
   }
 
-  try {
-    await withTransaction(async (client) => {
-      if (existingHash !== null) {
-        await client.query("DELETE FROM captures WHERE source_file = $1", [sourcePath]);
-      }
+  const { prepared, failed } = await prepareChunks(
+    chunks,
+    sourcePath,
+    SOURCE_TYPES.GITHUB_ISSUE,
+    options.domain
+  );
 
-      const { failed: failedChunks } = await processChunksBatch(
-        client,
-        chunks,
-        sourcePath,
-        SOURCE_TYPES.GITHUB_ISSUE,
-        options.domain
-      );
-
-      if (failedChunks === chunks.length && chunks.length > 0) {
-        throw new AllChunksFailedError();
-      }
-
-      const insertedCount = chunks.length - failedChunks;
-      await client.query(
-        `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
-         VALUES ($1, $2, $3, NOW())
-         ON CONFLICT (file_path)
-         DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
-        [sourcePath, contentHash, insertedCount]
-      );
-    });
-
-    return { status: "ingested", chunkCount: chunks.length };
-  } catch (err) {
-    if (err instanceof AllChunksFailedError) {
-      return { status: "failed", chunkCount: chunks.length };
-    }
-    throw err;
+  if (failed === chunks.length) {
+    return { status: "failed", chunkCount: chunks.length };
   }
+
+  await withTransaction(async (client) => {
+    if (existingHash !== null) {
+      await client.query("DELETE FROM captures WHERE source_file = $1", [sourcePath]);
+    }
+    await persistChunks(client, prepared);
+    const insertedCount = chunks.length - failed;
+    await client.query(
+      `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (file_path)
+       DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
+      [sourcePath, contentHash, insertedCount]
+    );
+  });
+
+  return { status: "ingested", chunkCount: chunks.length };
 }
 
 export async function ingestGitHubIssues(

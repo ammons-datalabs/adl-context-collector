@@ -101,23 +101,17 @@ export async function persistChunk(
   return "duplicate";
 }
 
-/**
- * Prepare chunks concurrently (bounded), then persist them sequentially on the
- * transaction client so the client is never used concurrently.
- */
-export async function processChunksBatch(
-  client: PoolClient,
+// Concurrent prepare (embedding/metadata + arg arrays). No client, no SQL.
+export async function prepareChunks(
   chunks: Chunk[],
   sourcePath: string,
   sourceType: SourceType,
   domainOverride?: string,
   typeOverride?: string,
   concurrency = 5
-): Promise<{ failed: number; duplicates: number }> {
+): Promise<{ prepared: PreparedChunk[]; failed: number }> {
   let failed = 0;
-  let duplicates = 0;
   const prepared: PreparedChunk[] = [];
-
   for (let i = 0; i < chunks.length; i += concurrency) {
     const batch = chunks.slice(i, i + concurrency);
     const results = await Promise.all(
@@ -130,11 +124,18 @@ export async function processChunksBatch(
       else prepared.push(r);
     }
   }
+  return { prepared, failed };
+}
 
+// Sequential persist on the transaction client. DB errors propagate.
+export async function persistChunks(
+  client: PoolClient,
+  prepared: PreparedChunk[]
+): Promise<{ duplicates: number }> {
+  let duplicates = 0;
   for (const p of prepared) {
     const outcome = await persistChunk(client, p);
     if (outcome === "duplicate") duplicates++;
   }
-
-  return { failed, duplicates };
+  return { duplicates };
 }
