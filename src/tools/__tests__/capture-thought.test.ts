@@ -1,8 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("../../db.js", () => ({
-  query: vi.fn(),
-}));
+vi.mock("../../db.js");
 vi.mock("../../services/embedder.js", () => ({
   generateEmbedding: vi.fn().mockResolvedValue([0.1]),
 }));
@@ -32,13 +30,15 @@ vi.mock("../../services/people.js", () => ({
   }),
 }));
 
+import * as dbModule from "../../db.js";
+const db = dbModule as unknown as typeof import("../../__mocks__/db.js");
+
 describe("captureThought people canonicalization", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    db.resetDbMock();
   });
 
-  it("stores canonicalized people array", async () => {
-    const { query } = await import("../../db.js");
+  it("stores the canonicalized people array inside a transaction", async () => {
     const { extractMetadata } = await import("../../services/metadata-extractor.js");
     (extractMetadata as ReturnType<typeof vi.fn>).mockResolvedValue({
       domain: "platform",
@@ -48,23 +48,35 @@ describe("captureThought people canonicalization", () => {
       action_items: [],
       dates: null,
     });
-    (query as ReturnType<typeof vi.fn>).mockImplementation(async (sql: string) => {
-      if (sql.startsWith("SELECT id FROM captures")) return { rows: [] };
-      if (sql === "BEGIN" || sql === "COMMIT") return { rows: [] };
-      if (sql.startsWith("INSERT INTO captures")) {
-        return { rows: [{ id: 99, captured_at: new Date() }] };
+    db.query.mockResolvedValueOnce({ rows: [] }); // dup check → none
+    db.clientQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO captures")) {
+        return { rows: [{ id: 99, captured_at: new Date() }], rowCount: 1 };
       }
-      return { rows: [] };
+      return { rows: [], rowCount: 0 };
     });
 
     const { captureThought } = await import("../capture-thought.js");
     await captureThought({ content: "hi" });
 
-    const insertCall = (query as ReturnType<typeof vi.fn>).mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].startsWith("INSERT INTO captures"),
+    const insert = db.clientQuery.mock.calls.find((c) =>
+      (c[0] as string).includes("INSERT INTO captures")
     );
-    expect(insertCall).toBeDefined();
-    const peopleArg = insertCall![1][4]; // $5 = people
-    expect(peopleArg).toEqual(["andrew"]); // both inputs collapsed and deduped
+    expect(insert).toBeDefined();
+    expect(insert![1][4]).toEqual(["andrew"]); // $5 people, collapsed + deduped
+
+    const sqls = db.txSql();
+    expect(sqls[0]).toBe("BEGIN");
+    expect(sqls).toContain("COMMIT");
+  });
+
+  it("skips an existing thought without opening a transaction", async () => {
+    db.query.mockResolvedValueOnce({ rows: [{ id: 7 }] }); // dup check → exists
+
+    const { captureThought } = await import("../capture-thought.js");
+    const result = await captureThought({ content: "hi" });
+
+    expect(result.content[0].text).toContain("already exists");
+    expect(db.txSql()).toEqual([]);
   });
 });
