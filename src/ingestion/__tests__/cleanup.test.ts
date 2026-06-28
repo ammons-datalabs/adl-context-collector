@@ -1,50 +1,47 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const queryMock = vi.fn();
-vi.mock("../../db.js", () => ({ query: queryMock }));
+vi.mock("../../db.js");
+
+import * as dbModule from "../../db.js";
+const db = dbModule as unknown as typeof import("../../__mocks__/db.js");
 
 describe("deleteBySource", () => {
   beforeEach(() => {
-    queryMock.mockReset();
+    db.resetDbMock();
   });
 
   it("deletes captures and source record in a transaction", async () => {
-    queryMock.mockResolvedValueOnce({}); // BEGIN
-    queryMock.mockResolvedValueOnce({ rowCount: 5 }); // DELETE captures
-    queryMock.mockResolvedValueOnce({ rowCount: 1 }); // DELETE sources
-    queryMock.mockResolvedValueOnce({}); // COMMIT
+    db.clientQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("DELETE FROM captures")) return { rowCount: 5 };
+      return { rows: [], rowCount: 0 };
+    });
 
     const { deleteBySource } = await import("../cleanup.js");
     const result = await deleteBySource("/vault/old-file.md");
 
     expect(result.capturesDeleted).toBe(5);
-    const calls = queryMock.mock.calls.map((c: unknown[]) => c[0] as string);
-    expect(calls[0]).toBe("BEGIN");
-    expect(calls[1]).toContain("DELETE FROM captures");
-    expect(calls[2]).toContain("DELETE FROM sources");
-    expect(calls[3]).toBe("COMMIT");
+    const sqls = db.txSql();
+    expect(sqls[0]).toBe("BEGIN");
+    expect(sqls[1]).toContain("DELETE FROM captures");
+    expect(sqls[2]).toContain("DELETE FROM sources");
+    expect(sqls[3]).toBe("COMMIT");
   });
 
   it("rolls back on error", async () => {
-    queryMock.mockResolvedValueOnce({}); // BEGIN
-    queryMock.mockResolvedValueOnce({ rowCount: 3 }); // DELETE captures
-    queryMock.mockRejectedValueOnce(new Error("DB error")); // DELETE sources fails
-    queryMock.mockResolvedValueOnce({}); // ROLLBACK
+    db.clientQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes("DELETE FROM captures")) return { rowCount: 3 };
+      if (sql.includes("DELETE FROM sources")) throw new Error("DB error");
+      return { rows: [], rowCount: 0 };
+    });
 
     const { deleteBySource } = await import("../cleanup.js");
-    await expect(deleteBySource("/vault/old-file.md")).rejects.toThrow(
-      "DB error"
-    );
-
-    const calls = queryMock.mock.calls.map((c: unknown[]) => c[0] as string);
-    expect(calls).toContain("ROLLBACK");
+    await expect(deleteBySource("/vault/old-file.md")).rejects.toThrow("DB error");
+    expect(db.txSql()).toContain("ROLLBACK");
+    expect(db.txSql()).not.toContain("COMMIT");
   });
 
   it("returns 0 when no captures exist for the path", async () => {
-    queryMock.mockResolvedValueOnce({}); // BEGIN
-    queryMock.mockResolvedValueOnce({ rowCount: 0 }); // DELETE captures (none)
-    queryMock.mockResolvedValueOnce({ rowCount: 0 }); // DELETE sources (none)
-    queryMock.mockResolvedValueOnce({}); // COMMIT
+    db.clientQuery.mockImplementation(async () => ({ rowCount: 0, rows: [] }));
 
     const { deleteBySource } = await import("../cleanup.js");
     const result = await deleteBySource("/vault/nonexistent.md");
