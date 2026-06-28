@@ -1,4 +1,4 @@
-import { query } from "../db.js";
+import { query, withTransaction } from "../db.js";
 import { generateEmbedding } from "../services/embedder.js";
 import { extractMetadata } from "../services/metadata-extractor.js";
 import { hashContent } from "../services/hasher.js";
@@ -40,9 +40,8 @@ export async function captureThought(args: {
 
   const { embedder } = loadConfig();
 
-  await query("BEGIN");
-  try {
-    const result = await query(
+  const row = await withTransaction(async (client) => {
+    const result = await client.query(
       `INSERT INTO captures (content, type, domain, topics, people, action_items, dates, source_type, content_hash)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id, captured_at`,
@@ -59,27 +58,24 @@ export async function captureThought(args: {
       ]
     );
 
-    const row = result.rows[0];
-    await query(
+    const inserted = result.rows[0];
+    await client.query(
       `INSERT INTO capture_embeddings (capture_id, provider_url, model, dimensions, embedding)
        VALUES ($1, $2, $3, $4, $5::vector)`,
-      [row.id, embedder.url, embedder.model, embedder.dimensions, JSON.stringify(embedding)]
+      [inserted.id, embedder.url, embedder.model, embedder.dimensions, JSON.stringify(embedding)]
     );
-    await query("COMMIT");
+    return inserted;
+  });
 
-    const topics = metadata?.topics ?? [];
-    const people = canonicalizePeople(metadata?.people);
-    const actionItems = metadata?.action_items ?? [];
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: `Saved capture #${row.id} at ${row.captured_at}\nDomain: ${domain} | Type: ${captureType}\nTopics: ${topics.join(", ") || "none"}\nPeople: ${people.join(", ") || "none"}${actionItems.length > 0 ? `\nAction items: ${actionItems.join("; ")}` : ""}`,
-        },
-      ],
-    };
-  } catch (err) {
-    await query("ROLLBACK");
-    throw err;
-  }
+  const topics = metadata?.topics ?? [];
+  const people = canonicalizePeople(metadata?.people);
+  const actionItems = metadata?.action_items ?? [];
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: `Saved capture #${row.id} at ${row.captured_at}\nDomain: ${domain} | Type: ${captureType}\nTopics: ${topics.join(", ") || "none"}\nPeople: ${people.join(", ") || "none"}${actionItems.length > 0 ? `\nAction items: ${actionItems.join("; ")}` : ""}`,
+      },
+    ],
+  };
 }
