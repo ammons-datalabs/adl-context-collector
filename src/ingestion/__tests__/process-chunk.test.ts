@@ -1,8 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("../../db.js", () => ({
-  query: vi.fn(),
-}));
 vi.mock("../../services/embedder.js", () => ({
   generateEmbedding: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
 }));
@@ -15,23 +12,20 @@ vi.mock("../../services/hasher.js", () => ({
 vi.mock("../../config.js", () => ({
   loadConfig: vi.fn().mockReturnValue({
     embedder: { url: "http://e", model: "m", dimensions: 3 },
-    vaultRoot: null,
-    peopleFile: null,
   }),
 }));
 vi.mock("../../services/people.js", () => ({
   canonicalizePeople: vi.fn((names: string[]) =>
-    names.map((n) => (n === "Adam-Hammo" ? "adam" : n.toLowerCase())),
+    (names ?? []).map((n) => (n === "Adam-Hammo" ? "adam" : n.toLowerCase()))
   ),
 }));
 
-describe("processChunk people canonicalization", () => {
+describe("prepareChunk", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("passes canonicalized people array to INSERT", async () => {
-    const { query } = await import("../../db.js");
+  it("puts the canonicalized people array in captureArgs ($5)", async () => {
     const { extractMetadata } = await import("../../services/metadata-extractor.js");
     (extractMetadata as ReturnType<typeof vi.fn>).mockResolvedValue({
       type: "note",
@@ -41,62 +35,107 @@ describe("processChunk people canonicalization", () => {
       action_items: [],
       dates: null,
     });
-    (query as ReturnType<typeof vi.fn>).mockResolvedValue({
-      rowCount: 1,
-      rows: [{ id: 1 }],
-    });
 
-    const { processChunk } = await import("../process-chunk.js");
-    await processChunk(
+    const { prepareChunk } = await import("../process-chunk.js");
+    const prepared = await prepareChunk(
       { content: "hello", index: 0, metadata: {} } as never,
       "test.md",
-      "markdown_import" as never,
+      "markdown_import" as never
     );
 
-    const insertCall = (query as ReturnType<typeof vi.fn>).mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].includes("INSERT INTO captures"),
-    );
-    expect(insertCall).toBeDefined();
-    const peopleArg = insertCall![1][4]; // 5th param ($5) is people
-    expect(peopleArg).toEqual(["adam", "andrew"]);
-  });
-});
-
-describe("processChunk type override", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
+    expect(prepared).not.toBeNull();
+    expect(prepared!.captureArgs[4]).toEqual(["adam", "andrew"]);
   });
 
-  it("uses the type override instead of the LLM-extracted type", async () => {
-    const { query } = await import("../../db.js");
+  it("uses the type override instead of the LLM-extracted type ($2)", async () => {
     const { extractMetadata } = await import("../../services/metadata-extractor.js");
     (extractMetadata as ReturnType<typeof vi.fn>).mockResolvedValue({
-      type: "meeting", // what the LLM would (wrongly) infer
+      type: "meeting",
       domain: "process",
       topics: ["t"],
       people: [],
       action_items: [],
       dates: null,
     });
-    (query as ReturnType<typeof vi.fn>).mockResolvedValue({
-      rowCount: 1,
-      rows: [{ id: 1 }],
-    });
 
-    const { processChunk } = await import("../process-chunk.js");
-    await processChunk(
+    const { prepareChunk } = await import("../process-chunk.js");
+    const prepared = await prepareChunk(
       { content: "hello", index: 0, metadata: {} } as never,
       "test.md",
       "markdown_import" as never,
-      "process", // domainOverride
-      "review", // typeOverride
+      "process",
+      "review"
     );
 
-    const insertCall = (query as ReturnType<typeof vi.fn>).mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].includes("INSERT INTO captures"),
+    expect(prepared!.captureArgs[1]).toBe("review");
+  });
+
+  it("returns null (soft fail) when embedding generation throws — no SQL", async () => {
+    const { extractMetadata } = await import("../../services/metadata-extractor.js");
+    (extractMetadata as ReturnType<typeof vi.fn>).mockResolvedValue({
+      type: "note",
+      domain: "platform",
+      topics: [],
+      people: [],
+      action_items: [],
+      dates: null,
+    });
+    const { generateEmbedding } = await import("../../services/embedder.js");
+    (generateEmbedding as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("api down")
     );
-    expect(insertCall).toBeDefined();
-    const typeArg = insertCall![1][1]; // 2nd param ($2) is type
-    expect(typeArg).toBe("review");
+
+    const { prepareChunk } = await import("../process-chunk.js");
+    const prepared = await prepareChunk(
+      { content: "hello", index: 0, metadata: {} } as never,
+      "test.md",
+      "markdown_import" as never
+    );
+
+    expect(prepared).toBeNull();
+  });
+});
+
+describe("persistChunk", () => {
+  const prepared = {
+    captureArgs: new Array(12).fill(null),
+    embedding: [0.1],
+    embedderUrl: "u",
+    embedderModel: "m",
+    embedderDimensions: 1,
+  };
+
+  it("inserts capture then embedding and returns 'inserted'", async () => {
+    const clientQuery = vi
+      .fn()
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
+      .mockResolvedValueOnce({ rowCount: 1 });
+
+    const { persistChunk } = await import("../process-chunk.js");
+    const outcome = await persistChunk({ query: clientQuery } as never, prepared as never);
+
+    expect(outcome).toBe("inserted");
+    expect(clientQuery.mock.calls[0][0]).toContain("INSERT INTO captures");
+    expect(clientQuery.mock.calls[1][0]).toContain("INSERT INTO capture_embeddings");
+    expect(clientQuery.mock.calls[1][1][0]).toBe(7); // capture_id from RETURNING
+  });
+
+  it("returns 'duplicate' (no embedding insert) when capture hits ON CONFLICT", async () => {
+    const clientQuery = vi.fn().mockResolvedValueOnce({ rowCount: 0, rows: [] });
+
+    const { persistChunk } = await import("../process-chunk.js");
+    const outcome = await persistChunk({ query: clientQuery } as never, prepared as never);
+
+    expect(outcome).toBe("duplicate");
+    expect(clientQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates a DB error (does not swallow)", async () => {
+    const clientQuery = vi.fn().mockRejectedValueOnce(new Error("db down"));
+
+    const { persistChunk } = await import("../process-chunk.js");
+    await expect(
+      persistChunk({ query: clientQuery } as never, prepared as never)
+    ).rejects.toThrow("db down");
   });
 });
