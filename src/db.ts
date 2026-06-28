@@ -29,3 +29,27 @@ export async function query(text: string, params?: unknown[]) {
   const p = await getPool();
   return p.query(text, params);
 }
+
+export async function withTransaction<T>(
+  fn: (client: pg.PoolClient) => Promise<T>
+): Promise<T> {
+  const p = await getPool();
+  const client = await p.connect();
+  let released = false;
+  try {
+    await client.query("BEGIN");
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    try {
+      await client.query("ROLLBACK");
+    } catch (rollbackErr) {
+      client.release(rollbackErr instanceof Error ? rollbackErr : new Error(String(rollbackErr))); // destroy a poisoned connection
+      released = true;
+    }
+    throw err;
+  } finally {
+    if (!released) client.release();
+  }
+}
