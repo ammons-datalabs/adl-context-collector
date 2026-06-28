@@ -1,7 +1,7 @@
 import { readFile, readdir } from "fs/promises";
 import { join, basename, resolve } from "path";
 import { createHash } from "crypto";
-import { query } from "../db.js";
+import { query, withTransaction } from "../db.js";
 import { chunkMarkdown } from "./chunkers/markdown.js";
 import { chunkText } from "./chunkers/text.js";
 import { chunkPdfPages } from "./chunkers/pdf.js";
@@ -50,6 +50,8 @@ async function getChunks(
   }
 }
 
+class AllChunksFailedError extends Error {}
+
 export async function ingestFile(
   filePath: string,
   options: IngestOptions = {}
@@ -68,7 +70,6 @@ export async function ingestFile(
     };
   }
 
-  // Hash check for re-ingestion
   const fileHash = await hashFile(absPath);
   const existing = await query(
     "SELECT file_hash FROM sources WHERE file_path = $1",
@@ -83,11 +84,6 @@ export async function ingestFile(
       failedChunks: 0,
       skippedDuplicates: 0,
     };
-  }
-
-  // If file changed, delete old chunks
-  if (existing.rows.length > 0) {
-    await query("DELETE FROM captures WHERE source_file = $1", [absPath]);
   }
 
   if (options.dryRun) {
@@ -108,33 +104,57 @@ export async function ingestFile(
     format === "markdown"
       ? parseFrontmatterOverrides(await readFile(absPath, "utf-8"))
       : {};
-  const { failed: failedChunks, duplicates: skippedDuplicates } =
-    await processChunksBatch(
-      chunks,
-      absPath,
-      FORMAT_TO_SOURCE_TYPE[format],
-      options.domain,
-      options.type ?? fmOverrides.type
-    );
 
-  const insertedCount = chunks.length - failedChunks - skippedDuplicates;
+  try {
+    const { failed, duplicates } = await withTransaction(async (client) => {
+      if (existing.rows.length > 0) {
+        await client.query("DELETE FROM captures WHERE source_file = $1", [absPath]);
+      }
 
-  // Upsert sources table
-  await query(
-    `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
-     VALUES ($1, $2, $3, NOW())
-     ON CONFLICT (file_path)
-     DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
-    [absPath, fileHash, insertedCount]
-  );
+      const res = await processChunksBatch(
+        client,
+        chunks,
+        absPath,
+        FORMAT_TO_SOURCE_TYPE[format],
+        options.domain,
+        options.type ?? fmOverrides.type
+      );
 
-  return {
-    filePath: absPath,
-    status: failedChunks === chunks.length ? "failed" : "ingested",
-    chunkCount: chunks.length,
-    failedChunks,
-    skippedDuplicates,
-  };
+      if (res.failed === chunks.length && chunks.length > 0) {
+        throw new AllChunksFailedError();
+      }
+
+      const insertedCount = chunks.length - res.failed - res.duplicates;
+      await client.query(
+        `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (file_path)
+         DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
+        [absPath, fileHash, insertedCount]
+      );
+
+      return res;
+    });
+
+    return {
+      filePath: absPath,
+      status: failed === chunks.length ? "failed" : "ingested",
+      chunkCount: chunks.length,
+      failedChunks: failed,
+      skippedDuplicates: duplicates,
+    };
+  } catch (err) {
+    if (err instanceof AllChunksFailedError) {
+      return {
+        filePath: absPath,
+        status: "failed",
+        chunkCount: chunks.length,
+        failedChunks: chunks.length,
+        skippedDuplicates: 0,
+      };
+    }
+    throw err;
+  }
 }
 
 export async function ingestDirectory(

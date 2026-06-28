@@ -1,4 +1,4 @@
-import { query } from "../db.js";
+import { query, withTransaction } from "../db.js";
 import { hashContent } from "../services/hasher.js";
 import { chunkGitHubIssue, type GitHubIssue } from "./chunkers/github-issue.js";
 import { processChunksBatch } from "./process-chunk.js";
@@ -7,6 +7,8 @@ import {
   type IngestOptions,
   type IngestGitHubResult,
 } from "./types.js";
+
+class AllChunksFailedError extends Error {}
 
 function issueSourcePath(repo: string, issueNumber: number): string {
   return `github://${repo}/issues/${issueNumber}`;
@@ -55,44 +57,39 @@ export async function ingestGitHubIssue(
     return { status: "ingested", chunkCount: chunks.length };
   }
 
-  // --- Data loss fix (#1): use transaction so DELETE is rolled back on failure ---
-  await query("BEGIN");
   try {
-    // Delete old captures if re-ingesting
-    if (existingHash !== null) {
-      await query("DELETE FROM captures WHERE source_file = $1", [sourcePath]);
-    }
+    await withTransaction(async (client) => {
+      if (existingHash !== null) {
+        await client.query("DELETE FROM captures WHERE source_file = $1", [sourcePath]);
+      }
 
-    // Process chunks with bounded concurrency (#8)
-    const { failed: failedChunks } = await processChunksBatch(
-      chunks,
-      sourcePath,
-      SOURCE_TYPES.GITHUB_ISSUE,
-      options.domain
-    );
+      const { failed: failedChunks } = await processChunksBatch(
+        client,
+        chunks,
+        sourcePath,
+        SOURCE_TYPES.GITHUB_ISSUE,
+        options.domain
+      );
 
-    if (failedChunks === chunks.length) {
-      // All chunks failed — rollback to restore old captures
-      await query("ROLLBACK");
-      return { status: "failed", chunkCount: chunks.length };
-    }
+      if (failedChunks === chunks.length && chunks.length > 0) {
+        throw new AllChunksFailedError();
+      }
 
-    const insertedCount = chunks.length - failedChunks;
-
-    // Upsert sources with content hash (#10)
-    await query(
-      `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (file_path)
-       DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
-      [sourcePath, contentHash, insertedCount]
-    );
-
-    await query("COMMIT");
+      const insertedCount = chunks.length - failedChunks;
+      await client.query(
+        `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
+         VALUES ($1, $2, $3, NOW())
+         ON CONFLICT (file_path)
+         DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
+        [sourcePath, contentHash, insertedCount]
+      );
+    });
 
     return { status: "ingested", chunkCount: chunks.length };
   } catch (err) {
-    await query("ROLLBACK");
+    if (err instanceof AllChunksFailedError) {
+      return { status: "failed", chunkCount: chunks.length };
+    }
     throw err;
   }
 }
