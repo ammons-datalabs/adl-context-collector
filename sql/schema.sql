@@ -96,6 +96,22 @@ CREATE INDEX IF NOT EXISTS idx_facts_current ON facts (domain, category, key)
     WHERE valid_until IS NULL;
 
 -- ============================================================
+-- Table 1c: fact_embeddings (vector embeddings for facts, multi-model)
+-- Defined here, after facts, because the FK below resolves at CREATE time.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS fact_embeddings (
+    fact_id      BIGINT NOT NULL REFERENCES facts(id) ON DELETE CASCADE,
+    provider_url TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    dimensions   INTEGER NOT NULL,
+    embedding    vector NOT NULL,
+    created_at   TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (fact_id, provider_url, model)
+);
+
+-- HNSW index is created per-model by migrate-embeddings.ts, mirroring capture_embeddings.
+
+-- ============================================================
 -- Table 3: sources (migration tracking)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS sources (
