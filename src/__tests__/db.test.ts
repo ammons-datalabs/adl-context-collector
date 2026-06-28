@@ -1,7 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const h = vi.hoisted(() => {
-  const clientQuery = vi.fn(async () => ({ rows: [], rowCount: 0 }));
+  const clientQuery = vi.fn(
+    async (_sql: string): Promise<{ rows: unknown[]; rowCount?: number }> => ({
+      rows: [],
+      rowCount: 0,
+    })
+  );
   const release = vi.fn();
   const client = { query: clientQuery, release };
   const connect = vi.fn(async () => client);
