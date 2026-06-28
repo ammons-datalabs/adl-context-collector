@@ -36,7 +36,7 @@ export async function saveFact(args: {
       [asOf, args.domain, args.category, args.key]
     );
 
-    // Insert (or update same as_of) the current value
+    // Insert/update the current value; valid_until = NULL keeps a same-as_of re-save current.
     const result = await client.query(
       `INSERT INTO facts (domain, category, key, value, value_numeric, currency, unit, context, people, as_of, source_type)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::date, $11)
@@ -47,6 +47,7 @@ export async function saveFact(args: {
              unit = EXCLUDED.unit,
              context = EXCLUDED.context,
              people = EXCLUDED.people,
+             valid_until = NULL,
              captured_at = NOW()
        RETURNING id`,
       [
