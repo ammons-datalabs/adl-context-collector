@@ -109,8 +109,8 @@ describe("ingestGitHubIssue", () => {
     const result = await ingestGitHubIssue(makeIssue(), "org/repo");
 
     expect(result.status).toBe("failed");
-    expect(db.txSql()).toContain("ROLLBACK");
-    expect(db.txSql()).not.toContain("COMMIT");
+    expect(db.txSql()).toEqual([]);
+    expect(db.withTransaction).not.toHaveBeenCalled();
   });
 
   it("rolls back and rejects on a persist-stage DB error", async () => {

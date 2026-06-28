@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../../db.js");
 vi.mock("../process-chunk.js", () => ({
-  processChunksBatch: vi.fn().mockResolvedValue({ failed: 0, duplicates: 0 }),
+  prepareChunks: vi.fn().mockResolvedValue({ prepared: [{}], failed: 0 }),
+  persistChunks: vi.fn().mockResolvedValue({ duplicates: 0 }),
 }));
 vi.mock("../../config.js", () => ({
   loadConfig: vi.fn().mockReturnValue({
@@ -34,12 +35,11 @@ const db = dbModule as unknown as typeof import("../../__mocks__/db.js");
 describe("ingestFile transaction safety", () => {
   beforeEach(async () => {
     db.resetDbMock();
-    const { processChunksBatch } = await import("../process-chunk.js");
-    (processChunksBatch as ReturnType<typeof vi.fn>).mockReset();
-    (processChunksBatch as ReturnType<typeof vi.fn>).mockResolvedValue({
-      failed: 0,
-      duplicates: 0,
-    });
+    const { prepareChunks, persistChunks } = await import("../process-chunk.js");
+    (prepareChunks as ReturnType<typeof vi.fn>).mockReset();
+    (prepareChunks as ReturnType<typeof vi.fn>).mockResolvedValue({ prepared: [{}], failed: 0 });
+    (persistChunks as ReturnType<typeof vi.fn>).mockReset();
+    (persistChunks as ReturnType<typeof vi.fn>).mockResolvedValue({ duplicates: 0 });
   });
 
   it("wraps re-ingestion in BEGIN/DELETE/COMMIT on the transaction client", async () => {
@@ -59,8 +59,8 @@ describe("ingestFile transaction safety", () => {
 
   it("rolls back and rejects when processing throws", async () => {
     db.query.mockResolvedValueOnce({ rows: [{ file_hash: "oldhash" }] });
-    const { processChunksBatch } = await import("../process-chunk.js");
-    (processChunksBatch as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+    const { persistChunks } = await import("../process-chunk.js");
+    (persistChunks as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new Error("connection lost")
     );
 
@@ -84,21 +84,17 @@ describe("ingestFile transaction safety", () => {
     expect(sqls.some((s) => s.includes("DELETE"))).toBe(false);
   });
 
-  it("rolls back and returns failed when all chunks fail", async () => {
+  it("returns failed WITHOUT opening a transaction when all chunks fail", async () => {
     db.query.mockResolvedValueOnce({ rows: [] });
-    const { processChunksBatch } = await import("../process-chunk.js");
-    (processChunksBatch as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-      failed: 1,
-      duplicates: 0,
-    });
+    const { prepareChunks } = await import("../process-chunk.js");
+    (prepareChunks as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ prepared: [], failed: 1 });
 
     const { ingestFile } = await import("../index.js");
     const result = await ingestFile("/tmp/test.md");
 
     expect(result.status).toBe("failed");
-    const sqls = db.txSql();
-    expect(sqls).toContain("ROLLBACK");
-    expect(sqls).not.toContain("COMMIT");
+    expect(db.txSql()).toEqual([]);
+    expect(db.withTransaction).not.toHaveBeenCalled();
   });
 
   it("dry-run on a changed file neither deletes nor opens a transaction", async () => {

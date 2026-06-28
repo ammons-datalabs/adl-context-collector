@@ -6,7 +6,7 @@ import { chunkMarkdown } from "./chunkers/markdown.js";
 import { chunkText } from "./chunkers/text.js";
 import { chunkPdfPages } from "./chunkers/pdf.js";
 import { readPdf } from "./parsers/pdf-reader.js";
-import { processChunksBatch } from "./process-chunk.js";
+import { prepareChunks, persistChunks } from "./process-chunk.js";
 import { parseFrontmatterOverrides } from "./frontmatter.js";
 import {
   detectFormat,
@@ -49,8 +49,6 @@ async function getChunks(
     }
   }
 }
-
-class AllChunksFailedError extends Error {}
 
 export async function ingestFile(
   filePath: string,
@@ -105,56 +103,49 @@ export async function ingestFile(
       ? parseFrontmatterOverrides(await readFile(absPath, "utf-8"))
       : {};
 
-  try {
-    const { failed, duplicates } = await withTransaction(async (client) => {
-      if (existing.rows.length > 0) {
-        await client.query("DELETE FROM captures WHERE source_file = $1", [absPath]);
-      }
+  // Prepare (embedding/metadata API calls) BEFORE opening the transaction.
+  const { prepared, failed } = await prepareChunks(
+    chunks,
+    absPath,
+    FORMAT_TO_SOURCE_TYPE[format],
+    options.domain,
+    options.type ?? fmOverrides.type
+  );
 
-      const res = await processChunksBatch(
-        client,
-        chunks,
-        absPath,
-        FORMAT_TO_SOURCE_TYPE[format],
-        options.domain,
-        options.type ?? fmOverrides.type
-      );
-
-      if (res.failed === chunks.length && chunks.length > 0) {
-        throw new AllChunksFailedError();
-      }
-
-      const insertedCount = chunks.length - res.failed - res.duplicates;
-      await client.query(
-        `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
-         VALUES ($1, $2, $3, NOW())
-         ON CONFLICT (file_path)
-         DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
-        [absPath, fileHash, insertedCount]
-      );
-
-      return res;
-    });
-
+  // All chunks failed to prepare: never open a transaction, leave old data untouched.
+  if (failed === chunks.length && chunks.length > 0) {
     return {
       filePath: absPath,
-      status: failed === chunks.length ? "failed" : "ingested",
+      status: "failed",
       chunkCount: chunks.length,
       failedChunks: failed,
-      skippedDuplicates: duplicates,
+      skippedDuplicates: 0,
     };
-  } catch (err) {
-    if (err instanceof AllChunksFailedError) {
-      return {
-        filePath: absPath,
-        status: "failed",
-        chunkCount: chunks.length,
-        failedChunks: chunks.length,
-        skippedDuplicates: 0,
-      };
-    }
-    throw err;
   }
+
+  const { duplicates } = await withTransaction(async (client) => {
+    if (existing.rows.length > 0) {
+      await client.query("DELETE FROM captures WHERE source_file = $1", [absPath]);
+    }
+    const r = await persistChunks(client, prepared);
+    const insertedCount = chunks.length - failed - r.duplicates;
+    await client.query(
+      `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (file_path)
+       DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
+      [absPath, fileHash, insertedCount]
+    );
+    return r;
+  });
+
+  return {
+    filePath: absPath,
+    status: failed === chunks.length ? "failed" : "ingested",
+    chunkCount: chunks.length,
+    failedChunks: failed,
+    skippedDuplicates: duplicates,
+  };
 }
 
 export async function ingestDirectory(
