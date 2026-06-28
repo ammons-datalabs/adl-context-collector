@@ -87,6 +87,25 @@ describe("saveFact", () => {
     expect(embCall![1][4]).toBe(JSON.stringify([0.1]));
   });
 
+  it("resets valid_until on conflict so a same-as_of update stays current", async () => {
+    const { saveFact } = await import("../save-fact.js");
+    await saveFact({
+      domain: "team",
+      category: "status",
+      key: "danielbreves_focus",
+      value: "v2",
+      as_of: "2026-06-28",
+    });
+
+    const insert = db.clientQuery.mock.calls.find(
+      (c) => typeof c[0] === "string" && (c[0] as string).startsWith("INSERT INTO facts"),
+    );
+    expect(insert).toBeDefined();
+    // The supersede UPDATE marks the same-as_of row valid_until=as_of; without
+    // clearing it in DO UPDATE the re-saved value stays hidden from current-fact queries.
+    expect(insert![0] as string).toMatch(/DO UPDATE[\s\S]*valid_until = NULL/);
+  });
+
   it("composes the embedding text from domain, category, key, value and context", async () => {
     const { generateEmbedding } = await import("../../services/embedder.js");
     const { saveFact } = await import("../save-fact.js");
