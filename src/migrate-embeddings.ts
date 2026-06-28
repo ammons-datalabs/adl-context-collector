@@ -4,6 +4,10 @@ import { query } from "./db.js";
 import { generateEmbedding } from "./services/embedder.js";
 import { loadConfig } from "./config.js";
 
+// Bind params aren't allowed in an index predicate, so url/model are interpolated.
+// They're config-derived, but escape quotes so a stray one can't break the DDL.
+const quoteLiteral = (s: string) => `'${s.replace(/'/g, "''")}'`;
+
 type EmbedTarget = {
   label: string;
   table: string; // embeddings table
@@ -69,8 +73,8 @@ async function runTarget(
       CREATE INDEX IF NOT EXISTS ${indexName}
       ON ${t.table}
       USING hnsw ((embedding::vector(${dims})) vector_cosine_ops)
-      WHERE provider_url = '${url}'
-        AND model = '${model}'
+      WHERE provider_url = ${quoteLiteral(url)}
+        AND model = ${quoteLiteral(model)}
     `);
   }
 }
