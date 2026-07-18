@@ -1,7 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { resolve } from "path";
-import { resolveRoots } from "../roots.js";
+import { resolveRoots, syncAllRoots } from "../roots.js";
 import type { CollectorConfig } from "../../config.js";
+
+vi.mock("../orchestrator.js", () => ({ syncVaultIndex: vi.fn() }));
+import { syncVaultIndex } from "../orchestrator.js";
 
 function baseConfig(overrides: Partial<CollectorConfig>): CollectorConfig {
   return {
@@ -51,5 +54,36 @@ describe("resolveRoots", () => {
 
   it("throws when vaultRoot is null", () => {
     expect(() => resolveRoots(baseConfig({ vaultRoot: null }))).toThrow(/vaultRoot/);
+  });
+});
+
+describe("syncAllRoots", () => {
+  it("calls syncVaultIndex once per root with merged options, preserving order", async () => {
+    const mk = (n: number) => ({
+      scanned: n, newCount: n, changedCount: 0, deletedCount: 0,
+      unchangedCount: 0, failedCount: 0, failures: [],
+    });
+    (syncVaultIndex as unknown as ReturnType<typeof vi.fn>)
+      .mockResolvedValueOnce(mk(1)).mockResolvedValueOnce(mk(2));
+
+    const roots = [
+      { vaultRoot: "/a", include: ["**"], exclude: [], extensions: [".md"] },
+      { vaultRoot: "/b", include: ["docs"], exclude: ["x"], extensions: [".md"] },
+    ];
+    const onProgress = vi.fn();
+    const results = await syncAllRoots(
+      roots,
+      { dryRun: false, force: false, verbose: false },
+      onProgress,
+    );
+
+    expect(syncVaultIndex).toHaveBeenCalledTimes(2);
+    expect(syncVaultIndex).toHaveBeenNthCalledWith(1,
+      expect.objectContaining({ vaultRoot: "/a", dryRun: false, force: false, verbose: false }),
+      expect.any(Function));
+    expect(syncVaultIndex).toHaveBeenNthCalledWith(2,
+      expect.objectContaining({ vaultRoot: "/b", include: ["docs"] }),
+      expect.any(Function));
+    expect(results.map((r) => r.newCount)).toEqual([1, 2]);
   });
 });

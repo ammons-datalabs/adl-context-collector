@@ -1,5 +1,6 @@
 import { resolve } from "path";
 import type { CollectorConfig } from "../config.js";
+import { syncVaultIndex, type SyncResult } from "./orchestrator.js";
 
 export interface RootSpec {
   vaultRoot: string;
@@ -29,4 +30,23 @@ export function resolveRoots(config: CollectorConfig): RootSpec[] {
     extensions: r.extensions ?? DEFAULT_EXTENSIONS,
   }));
   return [main, ...extra];
+}
+
+export interface MultiSyncFlags {
+  dryRun: boolean;
+  force: boolean;
+  verbose: boolean;
+}
+
+export async function syncAllRoots(
+  roots: RootSpec[],
+  flags: MultiSyncFlags,
+  onProgress?: (message: string) => void
+): Promise<SyncResult[]> {
+  const results: SyncResult[] = [];
+  for (const root of roots) {
+    onProgress?.(`\n=== Root: ${root.vaultRoot} ===`);
+    results.push(await syncVaultIndex({ ...root, ...flags }, onProgress));
+  }
+  return results;
 }
