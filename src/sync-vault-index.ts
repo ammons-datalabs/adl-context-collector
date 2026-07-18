@@ -2,7 +2,7 @@ import "dotenv/config";
 import { resolve } from "path";
 import { parseArgs } from "node:util";
 import { loadConfig } from "./config.js";
-import { syncVaultIndex } from "./sync/orchestrator.js";
+import { resolveRoots, syncAllRoots } from "./sync/roots.js";
 import { getPool } from "./db.js";
 
 function usage(): never {
@@ -56,51 +56,51 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const vaultRoot = resolve(config.vaultRoot);
-
-  // Apply defaults for indexSync sub-fields
-  const include = config.indexSync?.include ?? ["**"];
-  const exclude = config.indexSync?.exclude ?? [];
-  const extensions = config.indexSync?.extensions ?? [".md", ".pdf", ".txt"];
-
+  const roots = resolveRoots(config);
   const dryRun = values["dry-run"]!;
   const force = values.force!;
   const verbose = values.verbose!;
-
   const prefix = dryRun ? "[DRY RUN] " : "";
+
   console.log(
     `${prefix}sync-vault-index — ${new Date().toISOString().slice(0, 10)}`
   );
   console.log(`Config: ${process.env.COLLECTOR_CONFIG}`);
-  console.log(`Vault root: ${vaultRoot}`);
+  console.log(`Roots (${roots.length}): ${roots.map((r) => r.vaultRoot).join(", ")}`);
   console.log();
 
-  const result = await syncVaultIndex(
-    { vaultRoot, include, exclude, extensions, dryRun, force, verbose },
+  const results = await syncAllRoots(
+    roots,
+    { dryRun, force, verbose },
     (msg) => console.log(msg)
+  );
+
+  const agg = results.reduce(
+    (a, r) => ({
+      newCount: a.newCount + r.newCount,
+      changedCount: a.changedCount + r.changedCount,
+      deletedCount: a.deletedCount + r.deletedCount,
+      unchangedCount: a.unchangedCount + r.unchangedCount,
+      failedCount: a.failedCount + r.failedCount,
+      failures: [...a.failures, ...r.failures],
+    }),
+    {
+      newCount: 0, changedCount: 0, deletedCount: 0, unchangedCount: 0,
+      failedCount: 0, failures: [] as Array<{ path: string; error: string }>,
+    }
   );
 
   console.log();
   console.log(
-    `${prefix}Summary: ${result.newCount} new, ${result.changedCount} re-ingested, ` +
-      `${result.deletedCount} deleted, ${result.unchangedCount} skipped`
+    `${prefix}Summary: ${agg.newCount} new, ${agg.changedCount} re-ingested, ` +
+      `${agg.deletedCount} deleted, ${agg.unchangedCount} skipped`
   );
 
-  if (result.failures.length > 0) {
-    console.log(`\nFailed (${result.failures.length}):`);
-    for (const f of result.failures) {
+  if (agg.failures.length > 0) {
+    console.log(`\nFailed (${agg.failures.length}):`);
+    for (const f of agg.failures) {
       console.log(`  ${f.path}: ${f.error}`);
     }
-  }
-
-  if (dryRun) {
-    console.log("\nManifest not updated (dry run).");
-  } else if (result.failedCount > 0) {
-    console.log(
-      `Manifest: per-file mtimes recorded for successes; last_run not advanced (${result.failedCount} failure${result.failedCount === 1 ? "" : "s"}).`
-    );
-  } else {
-    console.log("Manifest updated.");
   }
 
   // Clean up the connection pool (only if we actually used it)
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
     await pool.end();
   }
 
-  process.exit(result.failedCount > 0 ? 1 : 0);
+  process.exit(agg.failedCount > 0 ? 1 : 0);
 }
 
 main().catch((err) => {
