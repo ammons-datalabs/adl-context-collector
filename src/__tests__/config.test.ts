@@ -227,4 +227,20 @@ describe("loadConfig", () => {
     const config = await loadConfigWith({});
     expect(config.indexSync).toBeNull();
   });
+
+  it("passes additionalRoots through verbatim from JSON config", async () => {
+    const config = await loadConfigWith({
+      additionalRoots: [
+        { root: "/abs/platforms-vault", include: ["**"], exclude: ["**/.git/**"] },
+      ],
+    });
+    expect(config.additionalRoots).toEqual([
+      { root: "/abs/platforms-vault", include: ["**"], exclude: ["**/.git/**"] },
+    ]);
+  });
+
+  it("defaults additionalRoots to null when not in JSON config", async () => {
+    const config = await loadConfigWith({});
+    expect(config.additionalRoots).toBeNull();
+  });
 });

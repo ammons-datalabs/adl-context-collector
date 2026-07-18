@@ -39,6 +39,12 @@ export interface CollectorConfig {
     exclude?: string[];
     extensions?: string[];
   } | null;
+  additionalRoots?: Array<{
+    root: string;
+    include?: string[];
+    exclude?: string[];
+    extensions?: string[];
+  }> | null;
 }
 
 const DEFAULTS: CollectorConfig = {
@@ -99,6 +105,7 @@ const DEFAULTS: CollectorConfig = {
     },
   },
   indexSync: null,
+  additionalRoots: null,
 };
 
 function deepMerge(
