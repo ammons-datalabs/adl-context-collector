@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { resolve } from "path";
 import { resolveRoots, syncAllRoots } from "../roots.js";
 import type { CollectorConfig } from "../../config.js";
@@ -58,12 +58,17 @@ describe("resolveRoots", () => {
 });
 
 describe("syncAllRoots", () => {
+  const mk = (n: number) => ({
+    scanned: n, newCount: n, changedCount: 0, deletedCount: 0,
+    unchangedCount: 0, failedCount: 0, failures: [],
+  });
+
+  beforeEach(() => {
+    vi.mocked(syncVaultIndex).mockReset();
+  });
+
   it("calls syncVaultIndex once per root with merged options, preserving order", async () => {
-    const mk = (n: number) => ({
-      scanned: n, newCount: n, changedCount: 0, deletedCount: 0,
-      unchangedCount: 0, failedCount: 0, failures: [],
-    });
-    (syncVaultIndex as unknown as ReturnType<typeof vi.fn>)
+    vi.mocked(syncVaultIndex)
       .mockResolvedValueOnce(mk(1)).mockResolvedValueOnce(mk(2));
 
     const roots = [
@@ -85,5 +90,29 @@ describe("syncAllRoots", () => {
       expect.objectContaining({ vaultRoot: "/b", include: ["docs"] }),
       expect.any(Function));
     expect(results.map((r) => r.newCount)).toEqual([1, 2]);
+  });
+
+  it("records a root-level failure and still runs later roots when one root rejects", async () => {
+    vi.mocked(syncVaultIndex)
+      .mockResolvedValueOnce(mk(1))
+      .mockRejectedValueOnce(new Error("ENOENT: no such dir"))
+      .mockResolvedValueOnce(mk(3));
+
+    const roots = [
+      { vaultRoot: "/a", include: ["**"], exclude: [], extensions: [".md"] },
+      { vaultRoot: "/bad", include: ["**"], exclude: [], extensions: [".md"] },
+      { vaultRoot: "/c", include: ["**"], exclude: [], extensions: [".md"] },
+    ];
+    const results = await syncAllRoots(
+      roots,
+      { dryRun: false, force: false, verbose: false },
+    );
+
+    expect(syncVaultIndex).toHaveBeenCalledTimes(3);
+    expect(results).toHaveLength(3);
+    expect(results[0].newCount).toBe(1);
+    expect(results[2].newCount).toBe(3);
+    expect(results[1].failedCount).toBe(1);
+    expect(results[1].failures).toEqual([{ path: "/bad", error: "ENOENT: no such dir" }]);
   });
 });

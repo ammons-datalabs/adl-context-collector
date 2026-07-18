@@ -46,7 +46,24 @@ export async function syncAllRoots(
   const results: SyncResult[] = [];
   for (const root of roots) {
     onProgress?.(`\n=== Root: ${root.vaultRoot} ===`);
-    results.push(await syncVaultIndex({ ...root, ...flags }, onProgress));
+    try {
+      results.push(await syncVaultIndex({ ...root, ...flags }, onProgress));
+    } catch (err) {
+      // A root-level failure (e.g. an unreadable or missing directory) must not
+      // abort the remaining roots. Record it as a failed SyncResult so the
+      // aggregate summary and exit code surface it, then carry on.
+      const message = err instanceof Error ? err.message : String(err);
+      onProgress?.(`[error] root ${root.vaultRoot} → ${message}`);
+      results.push({
+        scanned: 0,
+        newCount: 0,
+        changedCount: 0,
+        deletedCount: 0,
+        unchangedCount: 0,
+        failedCount: 1,
+        failures: [{ path: root.vaultRoot, error: message }],
+      });
+    }
   }
   return results;
 }
