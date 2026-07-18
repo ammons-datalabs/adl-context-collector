@@ -1,4 +1,4 @@
-import { resolve } from "path";
+import { resolve, sep } from "path";
 import type { CollectorConfig } from "../config.js";
 import { syncVaultIndex, type SyncResult } from "./orchestrator.js";
 
@@ -13,9 +13,24 @@ const DEFAULT_INCLUDE = ["**"];
 const DEFAULT_EXCLUDE: string[] = [];
 const DEFAULT_EXTENSIONS = [".md", ".pdf", ".txt"];
 
+// True when a and b are the same directory or one contains the other. Per-root
+// manifests + absolute-path DB keys only isolate roots that are disjoint; a
+// shared file under two roots can be deleted by one while the other still marks
+// it indexed, so overlapping roots are rejected up front.
+function overlaps(a: string, b: string): boolean {
+  if (a === b) return true;
+  const aa = a.endsWith(sep) ? a : a + sep;
+  const bb = b.endsWith(sep) ? b : b + sep;
+  return aa.startsWith(bb) || bb.startsWith(aa);
+}
+
 export function resolveRoots(config: CollectorConfig): RootSpec[] {
-  if (!config.vaultRoot) {
-    throw new Error("config must specify vaultRoot");
+  if (!config.vaultRoot || !config.vaultRoot.trim()) {
+    throw new Error("config must specify a non-empty vaultRoot");
+  }
+  const additional = config.additionalRoots ?? [];
+  if (!Array.isArray(additional)) {
+    throw new Error("config additionalRoots must be an array");
   }
   const main: RootSpec = {
     vaultRoot: resolve(config.vaultRoot),
@@ -23,13 +38,28 @@ export function resolveRoots(config: CollectorConfig): RootSpec[] {
     exclude: config.indexSync?.exclude ?? DEFAULT_EXCLUDE,
     extensions: config.indexSync?.extensions ?? DEFAULT_EXTENSIONS,
   };
-  const extra: RootSpec[] = (config.additionalRoots ?? []).map((r) => ({
-    vaultRoot: resolve(r.root),
-    include: r.include ?? DEFAULT_INCLUDE,
-    exclude: r.exclude ?? DEFAULT_EXCLUDE,
-    extensions: r.extensions ?? DEFAULT_EXTENSIONS,
-  }));
-  return [main, ...extra];
+  const extra: RootSpec[] = additional.map((r) => {
+    if (!r.root || !r.root.trim()) {
+      throw new Error("each additionalRoots entry must have a non-empty root path");
+    }
+    return {
+      vaultRoot: resolve(r.root),
+      include: r.include ?? DEFAULT_INCLUDE,
+      exclude: r.exclude ?? DEFAULT_EXCLUDE,
+      extensions: r.extensions ?? DEFAULT_EXTENSIONS,
+    };
+  });
+  const specs = [main, ...extra];
+  for (let i = 0; i < specs.length; i++) {
+    for (let j = i + 1; j < specs.length; j++) {
+      if (overlaps(specs[i].vaultRoot, specs[j].vaultRoot)) {
+        throw new Error(
+          `index roots must be disjoint: "${specs[i].vaultRoot}" overlaps "${specs[j].vaultRoot}"`
+        );
+      }
+    }
+  }
+  return specs;
 }
 
 export interface MultiSyncFlags {

@@ -55,6 +55,35 @@ describe("resolveRoots", () => {
   it("throws when vaultRoot is null", () => {
     expect(() => resolveRoots(baseConfig({ vaultRoot: null }))).toThrow(/vaultRoot/);
   });
+
+  it("throws when vaultRoot is only whitespace", () => {
+    expect(() => resolveRoots(baseConfig({ vaultRoot: "   " }))).toThrow(/vaultRoot/);
+  });
+
+  it("throws when additionalRoots is not an array", () => {
+    expect(() =>
+      resolveRoots(baseConfig({
+        additionalRoots: {} as unknown as CollectorConfig["additionalRoots"],
+      })),
+    ).toThrow(/additionalRoots/);
+  });
+
+  it("throws when an additional root path is empty or whitespace", () => {
+    expect(() => resolveRoots(baseConfig({ additionalRoots: [{ root: "" }] }))).toThrow(/root/);
+    expect(() => resolveRoots(baseConfig({ additionalRoots: [{ root: "   " }] }))).toThrow(/root/);
+  });
+
+  it("throws when two roots resolve to the same path", () => {
+    expect(() =>
+      resolveRoots(baseConfig({ additionalRoots: [{ root: "/vault" }] })),
+    ).toThrow(/disjoint|overlap/);
+  });
+
+  it("throws when one root is nested inside another", () => {
+    expect(() =>
+      resolveRoots(baseConfig({ additionalRoots: [{ root: "/vault/team" }] })),
+    ).toThrow(/disjoint|overlap/);
+  });
 });
 
 describe("syncAllRoots", () => {
