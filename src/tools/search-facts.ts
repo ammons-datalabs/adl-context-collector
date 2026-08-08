@@ -22,12 +22,30 @@ export async function searchFacts(args: {
     conditions.push(`category = $${paramIdx++}`);
     params.push(args.category);
   }
-  if (args.search) {
-    conditions.push(
-      `(key ILIKE $${paramIdx} OR value ILIKE $${paramIdx} OR context ILIKE $${paramIdx})`
-    );
-    params.push(`%${args.search}%`);
-    paramIdx++;
+  // Match any term, not the whole string: a natural-language query rarely has
+  // one fact containing every word, and AND semantics would miss them all.
+  let orderBy = "domain, category, key, as_of DESC";
+  if (args.search?.trim()) {
+    const termParams: number[] = [];
+    const clauses = args.search
+      .trim()
+      .split(/\s+/)
+      .map((term) => {
+        params.push(`%${term}%`);
+        const p = paramIdx++;
+        termParams.push(p);
+        return `(key ILIKE $${p} OR value ILIKE $${p} OR context ILIKE $${p})`;
+      });
+    conditions.push(`(${clauses.join(" OR ")})`);
+    // OR matching makes the result set broad, so alphabetical order buries the
+    // best rows past the limit. Rank by terms hit, weighted by where they hit.
+    const score = termParams
+      .map(
+        (p) =>
+          `(CASE WHEN key ILIKE $${p} THEN 3 WHEN value ILIKE $${p} THEN 2 WHEN context ILIKE $${p} THEN 1 ELSE 0 END)`
+      )
+      .join(" + ");
+    orderBy = `(${score}) DESC, as_of DESC`;
   }
   if (currentOnly) {
     conditions.push("valid_until IS NULL");
@@ -41,7 +59,7 @@ export async function searchFacts(args: {
     `SELECT domain, category, key, value, value_numeric, currency, unit, context, as_of
      FROM facts
      ${where}
-     ORDER BY domain, category, key, as_of DESC
+     ORDER BY ${orderBy}
      LIMIT $${paramIdx}`,
     params
   );
