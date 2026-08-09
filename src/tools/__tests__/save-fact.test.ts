@@ -102,8 +102,70 @@ describe("saveFact", () => {
     );
     expect(insert).toBeDefined();
     // The supersede UPDATE marks the same-as_of row valid_until=as_of; without
-    // clearing it in DO UPDATE the re-saved value stays hidden from current-fact queries.
-    expect(insert![0] as string).toMatch(/DO UPDATE[\s\S]*valid_until = NULL/);
+    // rewriting it in DO UPDATE the re-saved value stays hidden from current-fact queries.
+    expect(insert![0] as string).toMatch(/DO UPDATE[\s\S]*valid_until = EXCLUDED\.valid_until/);
+    expect(insert![1]).toContain(null);
+  });
+
+  it("supersedes by key alone so a reclassified fact closes its prior row", async () => {
+    const { saveFact } = await import("../save-fact.js");
+    await saveFact({
+      domain: "taxonomy",
+      category: "definition",
+      key: "essa_definition",
+      value: "Education Sub-Saharan Africa",
+      as_of: "2026-08-06",
+    });
+
+    const update = db.clientQuery.mock.calls.find(
+      (c) => typeof c[0] === "string" && (c[0] as string).startsWith("UPDATE facts"),
+    );
+    expect(update).toBeDefined();
+    const sql = update![0] as string;
+    expect(sql).not.toMatch(/domain = \$/);
+    expect(sql).not.toMatch(/category = \$/);
+    expect(update![1]).not.toContain("taxonomy");
+    expect(update![1]).toContain("essa_definition");
+  });
+
+  it("does not close a newer current row when the save is backdated", async () => {
+    const { saveFact } = await import("../save-fact.js");
+    await saveFact({
+      domain: "ingestion",
+      category: "metric",
+      key: "local_dr_reference_count",
+      value: "15,158",
+      as_of: "2026-06-02",
+    });
+
+    const update = db.clientQuery.mock.calls.find(
+      (c) => typeof c[0] === "string" && (c[0] as string).startsWith("UPDATE facts"),
+    );
+    expect(update![0] as string).toMatch(/as_of <= \$/);
+  });
+
+  it("files a backdated save into history rather than leaving two current rows", async () => {
+    db.clientQuery.mockImplementation(async (sql: string) => {
+      if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return { rows: [] };
+      if (sql.startsWith("INSERT INTO facts")) return { rows: [{ id: 7 }] };
+      // A newer current row already exists for this key.
+      if (sql.startsWith("SELECT as_of")) return { rows: [{ as_of: "2026-07-15" }] };
+      return { rows: [] };
+    });
+
+    const { saveFact } = await import("../save-fact.js");
+    await saveFact({
+      domain: "ingestion",
+      category: "metric",
+      key: "local_dr_reference_count",
+      value: "15,158",
+      as_of: "2026-06-02",
+    });
+
+    const insert = db.clientQuery.mock.calls.find(
+      (c) => typeof c[0] === "string" && (c[0] as string).startsWith("INSERT INTO facts"),
+    );
+    expect(insert![1]).toContain("2026-07-15");
   });
 
   it("composes the embedding text from domain, category, key, value and context", async () => {

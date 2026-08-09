@@ -29,17 +29,27 @@ export async function saveFact(args: {
   const embedding = await generateEmbedding(embedText);
 
   const factId = await withTransaction(async (client) => {
-    // Mark previous value as superseded
+    // Supersede by key alone. domain/category are mutable classification, so
+    // keying on them lets a reclassified fact leave its old row current too.
     await client.query(
       `UPDATE facts SET valid_until = $1::date
-       WHERE domain = $2 AND category = $3 AND key = $4 AND valid_until IS NULL`,
-      [asOf, args.domain, args.category, args.key]
+       WHERE key = $2 AND valid_until IS NULL AND as_of <= $1::date`,
+      [asOf, args.key]
     );
+
+    // A backdated save must land in history, not alongside a newer current row.
+    const newer = await client.query(
+      `SELECT as_of FROM facts
+       WHERE key = $1 AND valid_until IS NULL AND as_of > $2::date
+       ORDER BY as_of LIMIT 1`,
+      [args.key, asOf]
+    );
+    const validUntil = newer.rows[0]?.as_of ?? null;
 
     // Insert/update the current value; valid_until = NULL keeps a same-as_of re-save current.
     const result = await client.query(
-      `INSERT INTO facts (domain, category, key, value, value_numeric, currency, unit, context, people, as_of, source_type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::date, $11)
+      `INSERT INTO facts (domain, category, key, value, value_numeric, currency, unit, context, people, as_of, valid_until, source_type)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::date, $11::date, $12)
        ON CONFLICT (domain, category, key, as_of) DO UPDATE
          SET value = EXCLUDED.value,
              value_numeric = EXCLUDED.value_numeric,
@@ -47,7 +57,7 @@ export async function saveFact(args: {
              unit = EXCLUDED.unit,
              context = EXCLUDED.context,
              people = EXCLUDED.people,
-             valid_until = NULL,
+             valid_until = EXCLUDED.valid_until,
              captured_at = NOW()
        RETURNING id`,
       [
@@ -61,6 +71,7 @@ export async function saveFact(args: {
         args.context ?? null,
         people.length > 0 ? people : null,
         asOf,
+        validUntil,
         SOURCE_TYPES.CLAUDE_CAPTURE,
       ]
     );
