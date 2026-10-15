@@ -4,7 +4,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { DOMAINS, CAPTURE_TYPES } from "./types.js";
 import { loadConfig } from "./config.js";
-import { searchContext } from "./tools/search-context.js";
+import { searchContext, domainArgDescription } from "./tools/search-context.js";
 import { lookupFact } from "./tools/lookup-fact.js";
 import { searchFacts } from "./tools/search-facts.js";
 import { captureThought } from "./tools/capture-thought.js";
@@ -37,7 +37,7 @@ server.tool(
     domain: z
       .enum(DOMAINS as [string, ...string[]])
       .optional()
-      .describe("Filter to a specific domain"),
+      .describe(domainArgDescription(config.search.domain_boost)),
     limit: z
       .number()
       .min(1)
@@ -49,9 +49,8 @@ server.tool(
       .number()
       .min(0)
       .max(1)
-      .default(0.3)
       .optional()
-      .describe("Minimum similarity threshold (default 0.3)"),
+      .describe("Minimum similarity threshold. Omit to use the configured per-vault floor"),
   },
   async (args) => searchContext(args)
 );

@@ -11,7 +11,7 @@ By default it uses OpenAI for embeddings and metadata extraction. Optionally, ru
 ## Prerequisites
 
 - **Node.js** 20+
-- **PostgreSQL** with the [pgvector](https://github.com/pgvector/pgvector) extension
+- **PostgreSQL** with the [pgvector](https://github.com/pgvector/pgvector) extension, 0.8.0 or later (`sql/schema.sql` checks)
 - **OpenAI API key** (or [Ollama](https://ollama.com) for fully local operation)
 - **An MCP client** — [Claude Code](https://docs.anthropic.com/en/docs/claude-code), [Claude Desktop](https://claude.ai/download), or any app that supports the [Model Context Protocol](https://modelcontextprotocol.io)
 
@@ -375,6 +375,23 @@ env $(grep -v '^#' /path/to/vault/.env | xargs) npm run migrate-schema -- \
 ```
 
 This creates the `capture_embeddings` table, copies existing embeddings with their model metadata, verifies the copy, and drops the old column.
+
+### Upgrading an existing database
+
+Re-run the schema after pulling: every statement in it is idempotent, so it only adds what is missing, and it stops with an error on pgvector older than 0.8.0, which domain-filtered search needs.
+
+```bash
+psql your_database < sql/schema.sql
+```
+
+If it stops on the pgvector version, upgrade the package (`brew upgrade pgvector`, or your distribution's `postgresql-17-pgvector`), then update the extension in each database and re-run the schema:
+
+```bash
+psql your_database -c "ALTER EXTENSION vector UPDATE"
+psql your_database -c "SELECT extversion FROM pg_extension WHERE extname = 'vector'"
+```
+
+Without this, domain-filtered searches fail with an error naming `hnsw.iterative_scan`.
 
 ## License
 

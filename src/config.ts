@@ -17,6 +17,16 @@ export interface CollectorConfig {
     model: string;
     apiKey: string | null;
   };
+  search: {
+    // Cosine floor for search_context. Calibrate per embedding model: the
+    // spread differs, so one model's "unrelated" scores another's "relevant".
+    min_similarity: number;
+    // Above 0, a requested domain ranks matches instead of excluding them.
+    domain_boost: number;
+    // HNSW candidates collected before the domain filter is applied. The default of 40
+    // post-filters too few rows to find a small domain; used whenever a domain is given.
+    ef_search: number;
+  };
   tools: {
     search_context: { description: string };
     lookup_fact: { description: string; keyExamples: string[] };
@@ -63,6 +73,11 @@ const DEFAULTS: CollectorConfig = {
     url: "https://api.openai.com/v1/chat/completions",
     model: "gpt-4o-mini",
     apiKey: "env:OPENAI_API_KEY",
+  },
+  search: {
+    min_similarity: 0.3,
+    domain_boost: 0,
+    ef_search: 200,
   },
   tools: {
     search_context: {

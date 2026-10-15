@@ -3,6 +3,16 @@
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Domain-filtered search sets hnsw.iterative_scan, which pgvector added in 0.8.0.
+DO $$
+BEGIN
+    IF string_to_array((SELECT extversion FROM pg_extension WHERE extname = 'vector'), '.')::int[]
+       < ARRAY[0, 8] THEN
+        RAISE EXCEPTION 'pgvector 0.8.0 or later is required; ALTER EXTENSION vector UPDATE after upgrading the package';
+    END IF;
+END
+$$;
+
 -- ============================================================
 -- Table 1: captures (narrative knowledge, semantic search)
 -- ============================================================
