@@ -56,7 +56,7 @@ export async function searchFacts(args: {
   params.push(limit);
 
   const result = await query(
-    `SELECT domain, category, key, value, value_numeric, currency, unit, context, as_of
+    `SELECT domain, category, key, value, value_numeric, currency, unit, context, to_char(as_of, 'YYYY-MM-DD') AS as_of
      FROM facts
      ${where}
      ORDER BY ${orderBy}

@@ -3,6 +3,7 @@ import { generateEmbedding } from "../services/embedder.js";
 import { loadConfig } from "../config.js";
 import { SOURCE_TYPES } from "../ingestion/types.js";
 import { canonicalizePeople } from "../services/people.js";
+import { SaveFactCommandSchema } from "./save-fact-schema.js";
 
 export async function saveFact(args: {
   domain: string;
@@ -16,6 +17,10 @@ export async function saveFact(args: {
   people?: string[];
   as_of?: string;
 }) {
+  // Parse here as well as at the MCP boundary, so a direct caller cannot bypass
+  // the guards and no embedding or write happens on rejected input.
+  args = SaveFactCommandSchema.parse(args);
+
   const asOf = args.as_of ?? new Date().toISOString().split("T")[0];
   const people = canonicalizePeople(args.people);
   const { embedder } = loadConfig();
