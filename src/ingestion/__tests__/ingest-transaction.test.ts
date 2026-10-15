@@ -97,6 +97,23 @@ describe("ingestFile transaction safety", () => {
     expect(db.withTransaction).not.toHaveBeenCalled();
   });
 
+  it("reports skipped, not failed, when the file yields no chunks", async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+    // A .txt shorter than MIN_CHUNK_CHARS: chunkText yields nothing to index.
+    const SHORT = "Blocked on the Keycloak realm import.";
+    const { readFile } = await import("fs/promises");
+    (readFile as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(() => Promise.resolve(Buffer.from(SHORT)))
+      .mockImplementationOnce(() => Promise.resolve(SHORT));
+
+    const { ingestFile } = await import("../index.js");
+    const result = await ingestFile("/tmp/note.txt");
+
+    expect(result.status).toBe("skipped");
+    expect(result.chunkCount).toBe(0);
+    expect(result.failedChunks).toBe(0);
+  });
+
   it("dry-run on a changed file neither deletes nor opens a transaction", async () => {
     db.query.mockResolvedValueOnce({ rows: [{ file_hash: "oldhash" }] }); // changed
     const { ingestFile } = await import("../index.js");

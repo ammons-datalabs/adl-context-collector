@@ -25,6 +25,58 @@ describe("prepareChunk", () => {
     vi.clearAllMocks();
   });
 
+  it("strips NUL from the content and the section heading", async () => {
+    const { extractMetadata } = await import("../../services/metadata-extractor.js");
+    (extractMetadata as ReturnType<typeof vi.fn>).mockResolvedValue({
+      type: "note",
+      domain: "platform",
+      topics: [],
+      people: [],
+      action_items: [],
+      dates: null,
+    });
+
+    const { prepareChunk } = await import("../process-chunk.js");
+    const prepared = await prepareChunk(
+      {
+        content: "reasoning\u0000 tail",
+        index: 0,
+        metadata: { heading: "What happ\u0000ened" },
+      } as never,
+      "test.md",
+      "markdown_import" as never
+    );
+
+    expect(prepared!.captureArgs[0]).toBe("reasoning tail");
+    expect(prepared!.captureArgs[8]).toBe("What happened");
+  });
+
+  it("hashes and embeds the cleaned content, not the raw bytes", async () => {
+    const { extractMetadata } = await import("../../services/metadata-extractor.js");
+    (extractMetadata as ReturnType<typeof vi.fn>).mockResolvedValue({
+      type: "note",
+      domain: "platform",
+      topics: [],
+      people: [],
+      action_items: [],
+      dates: null,
+    });
+    const { hashContent } = await import("../../services/hasher.js");
+    const { generateEmbedding } = await import("../../services/embedder.js");
+
+    const { prepareChunk } = await import("../process-chunk.js");
+    const prepared = await prepareChunk(
+      { content: "one\u0000two", index: 0, metadata: {} } as never,
+      "test.md",
+      "markdown_import" as never
+    );
+
+    expect(prepared!.captureArgs[8]).toBeNull(); // no heading stays null, not ""
+    expect(hashContent).toHaveBeenCalledWith("onetwo");
+    expect(generateEmbedding).toHaveBeenCalledWith("onetwo");
+    expect(extractMetadata).toHaveBeenCalledWith("onetwo");
+  });
+
   it("puts the canonicalized people array in captureArgs ($5)", async () => {
     const { extractMetadata } = await import("../../services/metadata-extractor.js");
     (extractMetadata as ReturnType<typeof vi.fn>).mockResolvedValue({
