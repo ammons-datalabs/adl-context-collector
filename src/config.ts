@@ -29,6 +29,12 @@ export interface CollectorConfig {
     // HNSW candidates collected before the domain filter is applied. The default of 40
     // post-filters too few rows to find a small domain; used whenever a domain is given.
     ef_search: number;
+    // A cued number in at most this many captures is an identifier and routes the query
+    // to the lexical leg. Absolute, so a small vault needs a lower value.
+    identifier_max_df: number;
+    // Case-insensitive regexes whose group 1 captures an identifier, e.g. "\\bpr\\s*(\\d+)".
+    // A bare number never counts: alone it is as often a quantity as an identifier.
+    identifier_cues: string[];
   };
   tools: {
     search_context: { description: string };
@@ -82,6 +88,9 @@ const DEFAULTS: CollectorConfig = {
     min_similarity: 0.3,
     domain_boost: 0,
     ef_search: 200,
+    // Off by default: the cap depends on corpus size, and the cues on the vault's vocabulary.
+    identifier_max_df: 0,
+    identifier_cues: [],
   },
   tools: {
     search_context: {
