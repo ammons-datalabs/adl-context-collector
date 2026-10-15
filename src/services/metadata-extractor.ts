@@ -2,6 +2,7 @@ import type { CaptureMetadata } from "../types.js";
 import { DOMAINS, CAPTURE_TYPES } from "../types.js";
 import { loadConfig } from "../config.js";
 import { resolveApiKey } from "./resolve-api-key.js";
+import { extractMetadataLocal } from "./local-metadata.js";
 
 function buildSystemPrompt(): string {
   return `You are a metadata extraction engine. Given a text chunk from a personal knowledge base, extract structured metadata.
@@ -71,10 +72,14 @@ async function attemptExtraction(
 }
 
 export async function extractMetadata(
-  content: string
+  content: string,
+  embedding: number[]
 ): Promise<CaptureMetadata | null> {
   const { metadataExtractor } = loadConfig();
   if (!metadataExtractor.enabled) return null;
+  if (metadataExtractor.provider === "local") {
+    return extractMetadataLocal(content, embedding, loadConfig().embedder);
+  }
 
   const apiKey = resolveApiKey(metadataExtractor.apiKey);
   const headers: Record<string, string> = {

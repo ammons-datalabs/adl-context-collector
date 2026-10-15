@@ -13,6 +13,9 @@ export interface CollectorConfig {
   };
   metadataExtractor: {
     enabled: boolean;
+    // "local" classifies domain by kNN over the existing embeddings, finds people by
+    // roster match and topics by inverse document frequency. No network call.
+    provider: "openai" | "local";
     url: string;
     model: string;
     apiKey: string | null;
@@ -70,6 +73,7 @@ const DEFAULTS: CollectorConfig = {
   },
   metadataExtractor: {
     enabled: true,
+    provider: "openai",
     url: "https://api.openai.com/v1/chat/completions",
     model: "gpt-4o-mini",
     apiKey: "env:OPENAI_API_KEY",
@@ -169,8 +173,14 @@ export function loadConfig(): CollectorConfig {
 
   const configPath = process.env.COLLECTOR_CONFIG;
   if (!configPath) {
-    _cached = normalizeConfig(structuredClone(DEFAULTS));
-    return _cached;
+    // The built-in defaults point at api.openai.com. Returning them here meant any
+    // invocation that forgot the variable quietly shipped vault content to a remote
+    // endpoint instead of failing, which is the wrong direction to fail in.
+    throw new Error(
+      "COLLECTOR_CONFIG is not set. Refusing to fall back to the built-in defaults, " +
+        "which send embeddings and metadata extraction to api.openai.com. Point it at a " +
+        "vault config file, e.g. COLLECTOR_CONFIG=/path/to/vault-config.json."
+    );
   }
 
   let raw: string;
@@ -182,8 +192,13 @@ export function loadConfig(): CollectorConfig {
       "code" in err &&
       (err as NodeJS.ErrnoException).code === "ENOENT"
     ) {
-      _cached = normalizeConfig(structuredClone(DEFAULTS));
-      return _cached;
+      // A typo in the path used to land on the built-in defaults, which is the same
+      // silent hand-off to api.openai.com as setting no path at all.
+      throw new Error(
+        `COLLECTOR_CONFIG points at ${configPath}, which does not exist. Refusing to ` +
+          "fall back to the built-in defaults, which send embeddings and metadata " +
+          "extraction to api.openai.com."
+      );
     }
     throw err;
   }

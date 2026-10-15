@@ -1,6 +1,19 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { z } from "zod";
-import { saveFactShape, SaveFactCommandSchema, captureContent } from "../save-fact-schema.js";
+
+// save-fact-schema.ts calls loadConfig() at module scope, and loadConfig now refuses to
+// run without COLLECTOR_CONFIG rather than defaulting to the remote provider. An empty
+// config file gives it the built-in defaults, which is all this suite needs.
+import { mkdirSync, writeFileSync } from "fs";
+import { tmpdir } from "os";
+import { join } from "path";
+const cfgDir = join(tmpdir(), `save-fact-schema-test-${Date.now()}`);
+mkdirSync(cfgDir, { recursive: true });
+const cfgPath = join(cfgDir, "config.json");
+writeFileSync(cfgPath, "{}");
+vi.stubEnv("COLLECTOR_CONFIG", cfgPath);
+
+const { saveFactShape, SaveFactCommandSchema, captureContent } = await import("../save-fact-schema.js");
 
 // What the MCP SDK validates against: it parses tool input with the registered shape.
 const registered = z.object(saveFactShape);

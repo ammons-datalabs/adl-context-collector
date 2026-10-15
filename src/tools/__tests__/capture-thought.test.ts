@@ -70,6 +70,35 @@ describe("captureThought people canonicalization", () => {
     expect(sqls).toContain("COMMIT");
   });
 
+  it("hands the extractor the embedding so a local provider can classify", async () => {
+    const { extractMetadata } = await import("../../services/metadata-extractor.js");
+    (extractMetadata as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+    db.query.mockResolvedValueOnce({ rows: [] });
+    db.clientQuery.mockResolvedValue({ rows: [{ id: 1, captured_at: new Date() }], rowCount: 1 });
+
+    const { captureThought } = await import("../capture-thought.js");
+    await captureThought({ content: "hi" });
+
+    expect(extractMetadata).toHaveBeenCalledWith("hi", [0.1]);
+  });
+
+  it("falls back to the thought type when the local extractor leaves type empty", async () => {
+    const { extractMetadata } = await import("../../services/metadata-extractor.js");
+    (extractMetadata as ReturnType<typeof vi.fn>).mockResolvedValue({
+      type: "", domain: "", topics: [], people: [], action_items: [], dates: {},
+    });
+    db.query.mockResolvedValueOnce({ rows: [] });
+    db.clientQuery.mockResolvedValue({ rows: [{ id: 1, captured_at: new Date() }], rowCount: 1 });
+
+    const { captureThought } = await import("../capture-thought.js");
+    await captureThought({ content: "hi" });
+
+    const insert = db.clientQuery.mock.calls.find((c) =>
+      (c[0] as string).includes("INSERT INTO captures")
+    );
+    expect(insert![1][1]).toBe("thought");
+  });
+
   it("skips an existing thought without opening a transaction", async () => {
     db.query.mockResolvedValueOnce({ rows: [{ id: 7 }] }); // dup check → exists
 

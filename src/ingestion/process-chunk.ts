@@ -2,6 +2,7 @@ import { generateEmbedding } from "../services/embedder.js";
 import { extractMetadata } from "../services/metadata-extractor.js";
 import { hashContent } from "../services/hasher.js";
 import { loadConfig } from "../config.js";
+import { validDomain } from "../types.js";
 import { canonicalizePeople } from "../services/people.js";
 import type { PoolClient } from "pg";
 import type { Chunk, SourceType } from "./types.js";
@@ -31,13 +32,15 @@ export async function prepareChunk(
     const content = stripNul(chunk.content);
     const contentHash = hashContent(content);
 
-    const [embedding, metadata] = await Promise.all([
-      generateEmbedding(content),
-      extractMetadata(content),
-    ]);
-
     const { embedder } = loadConfig();
-    const domain = domainOverride ?? metadata?.domain ?? null;
+
+    // The local extractor classifies by nearest neighbours, so it needs the embedding
+    // first and cannot run alongside it the way the remote call did.
+    const embedding = await generateEmbedding(content);
+    const metadata = await extractMetadata(content, embedding);
+    // Only the extractor's guess is validated, and only for domain. An override is
+    // author-set, so frontmatter `type:` may use a value outside the configured list.
+    const domain = domainOverride ?? validDomain(metadata?.domain);
     const type = typeOverride ?? metadata?.type ?? null;
 
     const people = canonicalizePeople(metadata?.people);

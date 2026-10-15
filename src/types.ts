@@ -73,6 +73,13 @@ const DEFAULT_CAPTURE_TYPES = [
 export const DOMAINS = parseEnvList("COLLECTOR_DOMAINS", DEFAULT_DOMAINS);
 export const CAPTURE_TYPES = parseEnvList("COLLECTOR_CAPTURE_TYPES", DEFAULT_CAPTURE_TYPES);
 
+// Domain drives search ranking, so a value outside the configured list is useless and is
+// dropped. `type` is deliberately NOT validated: nothing queries it, and the extractor's
+// unlisted values carry more than a null would.
+export function validDomain(value: string | null | undefined): string | null {
+  return value != null && DOMAINS.includes(value) ? value : null;
+}
+
 // Runtime types (no longer compile-time unions since values are configurable)
 export type Domain = string;
 export type CaptureType = string;
