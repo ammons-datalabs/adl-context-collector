@@ -20,7 +20,7 @@ vi.mock("../../services/people.js", () => ({
     const seen = new Set<string>();
     const out: string[] = [];
     for (const n of names ?? []) {
-      const canonical = n === "mootpointer" ? "andrew" : n.toLowerCase();
+      const canonical = n === "kitekeeper" ? "alex" : n.toLowerCase();
       if (!seen.has(canonical)) {
         seen.add(canonical);
         out.push(canonical);
@@ -44,7 +44,7 @@ describe("captureThought people canonicalization", () => {
       domain: "platform",
       type: "thought",
       topics: [],
-      people: ["mootpointer", "andrew"],
+      people: ["kitekeeper", "alex"],
       action_items: [],
       dates: null,
     });
@@ -63,7 +63,7 @@ describe("captureThought people canonicalization", () => {
       (c[0] as string).includes("INSERT INTO captures")
     );
     expect(insert).toBeDefined();
-    expect(insert![1][4]).toEqual(["andrew"]); // $5 people, collapsed + deduped
+    expect(insert![1][4]).toEqual(["alex"]); // $5 people, collapsed + deduped
 
     const sqls = db.txSql();
     expect(sqls[0]).toBe("BEGIN");

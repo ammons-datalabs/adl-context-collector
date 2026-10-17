@@ -24,7 +24,7 @@ vi.mock("../../services/people.js", () => ({
     const out: string[] = [];
     const seen = new Set<string>();
     for (const n of names ?? []) {
-      const c = n === "danielbreves" ? "daniel" : n.toLowerCase();
+      const c = n === "rileyjones" ? "riley" : n.toLowerCase();
       if (!seen.has(c)) {
         seen.add(c);
         out.push(c);
@@ -58,16 +58,16 @@ describe("saveFact", () => {
     await saveFact({
       domain: "team",
       category: "status",
-      key: "danielbreves_focus",
-      value: "evidence-repo-ui",
-      people: ["danielbreves", "daniel"],
+      key: "riley_focus",
+      value: "acme-web",
+      people: ["rileyjones", "riley"],
     });
 
     const insert = db.clientQuery.mock.calls.find(
       (c) => typeof c[0] === "string" && (c[0] as string).startsWith("INSERT INTO facts"),
     );
     expect(insert).toBeDefined();
-    expect(insert![1][8]).toEqual(["daniel"]); // $9 = people, collapsed + deduped
+    expect(insert![1][8]).toEqual(["riley"]); // $9 = people, collapsed + deduped
 
     const sqls = db.txSql();
     expect(sqls[0]).toBe("BEGIN");
@@ -102,7 +102,7 @@ describe("saveFact", () => {
     await saveFact({
       domain: "team",
       category: "status",
-      key: "danielbreves_focus",
+      key: "riley_focus",
       value: "v2",
       as_of: "2026-06-28",
     });
