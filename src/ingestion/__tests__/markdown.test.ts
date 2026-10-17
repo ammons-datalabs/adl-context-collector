@@ -4,6 +4,11 @@ import { chunkMarkdown } from "../chunkers/markdown.js";
 // MIN_CHUNK_CHARS is 200, so test body text must exceed that threshold.
 const PAD = " Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam.";
 
+const LONG_PARAGRAPHS = Array.from(
+  { length: 20 },
+  (_, i) => `Paragraph ${i}: ${"word ".repeat(100)}`
+).join("\n\n");
+
 describe("chunkMarkdown", () => {
   it("creates a single chunk for short content with no headings", () => {
     const content = "This is a short paragraph with enough text to pass the minimum threshold for chunking purposes." + PAD;
@@ -82,7 +87,7 @@ describe("chunkMarkdown", () => {
     expect(secondChunk?.content).not.toContain("Nested");
   });
 
-  it("skips chunks under MIN_CHUNK_CHARS", () => {
+  it("merges a section under MIN_CHUNK_CHARS into the next one", () => {
     const content = [
       "# Doc",
       "",
@@ -94,8 +99,118 @@ describe("chunkMarkdown", () => {
     ].join("\n");
 
     const chunks = chunkMarkdown(content);
-    expect(chunks.every((c) => !c.content.includes("Tiny."))).toBe(true);
+    expect(chunks.some((c) => c.content.includes("Tiny."))).toBe(true);
     expect(chunks.some((c) => c.content.includes("Real Section"))).toBe(true);
+  });
+
+  it("keeps each merged section's heading so its body stays attributed", () => {
+    const content = [
+      "# Digest",
+      "",
+      "## repo-a",
+      "- 1 open issue",
+      "",
+      "## repo-b",
+      "- 2 open issues",
+      "",
+      "## repo-c",
+      "- 3 open issues",
+    ].join("\n");
+
+    const chunks = chunkMarkdown(content);
+    expect(chunks.length).toBe(1);
+    const { content: c } = chunks[0];
+    expect(c.indexOf("## repo-b")).toBeLessThan(c.indexOf("- 2 open issues"));
+    expect(c.indexOf("- 2 open issues")).toBeLessThan(c.indexOf("## repo-c"));
+  });
+
+  it("emits one chunk when every section is under MIN_CHUNK_CHARS", () => {
+    const content = [
+      "---",
+      "type: review",
+      "---",
+      "",
+      "# PR 257",
+      "",
+      "Author: someone",
+      "",
+      "## Review - approved",
+      "",
+      "LGTM.",
+    ].join("\n");
+
+    const chunks = chunkMarkdown(content);
+    expect(chunks.length).toBe(1);
+    expect(chunks[0].content).toContain("type: review");
+    expect(chunks[0].content).toContain("Author: someone");
+    expect(chunks[0].content).toContain("LGTM.");
+  });
+
+  it("attaches a trailing short section to the preceding chunk", () => {
+    const content = [
+      "# Doc",
+      "",
+      "Intro text that is long enough to be a meaningful chunk on its own with sufficient content." + PAD,
+      "",
+      "## Footnote",
+      "",
+      "See above.",
+    ].join("\n");
+
+    const chunks = chunkMarkdown(content);
+    expect(chunks.length).toBe(1);
+    expect(chunks[0].content).toContain("## Footnote");
+    expect(chunks[0].content).toContain("See above.");
+  });
+
+  it("labels a long section's continuation chunks with its own breadcrumb after a short intro", () => {
+    const content = `# Doc\n\nTiny intro.\n\n## Big Section\n\n${LONG_PARAGRAPHS}`;
+
+    const [first, ...continuations] = chunkMarkdown(content);
+    expect(continuations.length).toBeGreaterThan(0);
+    expect(first.content.indexOf("Tiny intro.")).toBeLessThan(first.content.indexOf("# Doc > ## Big Section"));
+    for (const chunk of continuations) {
+      expect(chunk.metadata.heading).toBe("# Doc > ## Big Section");
+      expect(chunk.content.startsWith("# Doc > ## Big Section")).toBe(true);
+    }
+  });
+
+  it("keeps text before any heading out from under the section that follows it", () => {
+    const content = `Intro line.\n\n## Big Section\n\n${LONG_PARAGRAPHS}`;
+
+    const [first, ...continuations] = chunkMarkdown(content);
+    expect(continuations.length).toBeGreaterThan(0);
+    expect(first.content.startsWith("Intro line.")).toBe(true);
+    expect(first.content.indexOf("Intro line.")).toBeLessThan(first.content.indexOf("## Big Section"));
+    for (const chunk of continuations) expect(chunk.metadata.heading).toBe("## Big Section");
+  });
+
+  it("re-states a heading the text returns to after another one", () => {
+    const content = ["## Alice", "Approved.", "", "## Bob", "Rejected.", "", "## Alice", "Withdrawn."].join("\n");
+
+    const { content: c } = chunkMarkdown(content)[0];
+    expect(c.indexOf("Rejected.")).toBeLessThan(c.lastIndexOf("## Alice"));
+    expect(c.lastIndexOf("## Alice")).toBeLessThan(c.indexOf("Withdrawn."));
+  });
+
+  it("does not repeat the heading when merged sections share a breadcrumb", () => {
+    const content = ["# Doc", "", "## Same", "", "short a", "", "## Same", "", "short b"].join("\n");
+
+    const chunks = chunkMarkdown(content);
+    expect(chunks.length).toBe(1);
+    expect(chunks[0].content.split("## Same").length - 1).toBe(1);
+    expect(chunks[0].content).toContain("short b");
+  });
+
+  it("gives a trailing short section its own chunk when the previous one is full", () => {
+    const content = ["# Doc", "", "x".repeat(5990), "", "## Tail", "", "short."].join("\n");
+
+    const chunks = chunkMarkdown(content);
+    expect(chunks.length).toBe(2);
+    expect(chunks[1].content).toContain("short.");
+    for (const chunk of chunks) {
+      expect(chunk.content.length).toBeLessThanOrEqual(6000);
+    }
   });
 
   it("prepends frontmatter to first chunk", () => {

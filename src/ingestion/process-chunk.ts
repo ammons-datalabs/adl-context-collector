@@ -14,6 +14,10 @@ export interface PreparedChunk {
   embedderDimensions: number;
 }
 
+// Postgres rejects 0x00 in text, so one byte fails the whole insert and, under the
+// scheduled sync, fails it identically on every run. The file on disk keeps the raw byte.
+const stripNul = (value: string): string => value.replace(/\0/g, "");
+
 // PREPARE: embedding + metadata + arg arrays. No SQL. A failure here is a soft,
 // skippable failure (the transaction never sees it).
 export async function prepareChunk(
@@ -24,11 +28,12 @@ export async function prepareChunk(
   typeOverride?: string
 ): Promise<PreparedChunk | null> {
   try {
-    const contentHash = hashContent(chunk.content);
+    const content = stripNul(chunk.content);
+    const contentHash = hashContent(content);
 
     const [embedding, metadata] = await Promise.all([
-      generateEmbedding(chunk.content),
-      extractMetadata(chunk.content),
+      generateEmbedding(content),
+      extractMetadata(content),
     ]);
 
     const { embedder } = loadConfig();
@@ -38,8 +43,9 @@ export async function prepareChunk(
     const people = canonicalizePeople(metadata?.people);
     const peopleArg = people.length > 0 ? people : null;
 
+    const section = chunk.metadata.heading ?? chunk.metadata.sourceLabel ?? null;
     const captureArgs = [
-      chunk.content,
+      content,
       type,
       domain,
       metadata?.topics ?? null,
@@ -47,7 +53,7 @@ export async function prepareChunk(
       metadata?.action_items ?? null,
       metadata?.dates ? JSON.stringify(metadata.dates) : null,
       sourcePath,
-      chunk.metadata.heading ?? chunk.metadata.sourceLabel ?? null,
+      section === null ? null : stripNul(section),
       sourceType,
       chunk.index,
       contentHash,

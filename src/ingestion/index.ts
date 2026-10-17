@@ -139,9 +139,10 @@ export async function ingestFile(
     return r;
   });
 
+  // An all-failed file returned above, so a chunkless one is a skip, not a failure.
   return {
     filePath: absPath,
-    status: failed === chunks.length ? "failed" : "ingested",
+    status: chunks.length === 0 ? "skipped" : "ingested",
     chunkCount: chunks.length,
     failedChunks: failed,
     skippedDuplicates: duplicates,

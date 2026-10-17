@@ -13,13 +13,15 @@ function buildBreadcrumb(stack: HeadingEntry[]): string {
 
 function splitOnParagraphs(
   text: string,
-  prefix: string,
-  startIndex: number
+  firstPrefix: string,
+  startIndex: number,
+  continuationPrefix = firstPrefix
 ): Chunk[] {
   const paragraphs = text.split("\n\n").filter((p) => p.trim().length > 0);
   const chunks: Chunk[] = [];
   let buffer = "";
   let index = startIndex;
+  let prefix = firstPrefix;
 
   for (const para of paragraphs) {
     const candidate = buffer ? buffer + "\n\n" + para : para;
@@ -33,6 +35,7 @@ function splitOnParagraphs(
         chunks.push({ content: fullContent, index: index++, metadata: {} });
       }
       buffer = para;
+      prefix = continuationPrefix;
     } else {
       buffer = candidate;
     }
@@ -57,8 +60,10 @@ export function chunkMarkdown(content: string): Chunk[] {
   const chunks: Chunk[] = [];
   const headingStack: HeadingEntry[] = [];
   let currentLines: string[] = [];
-  let chunkIndex = 0;
   let frontmatter = "";
+
+  // Sections below MIN_CHUNK_CHARS accumulate here instead of being dropped.
+  let buffer: Array<{ crumb: string; text: string }> = [];
 
   // Extract frontmatter
   let lineStart = 0;
@@ -70,30 +75,51 @@ export function chunkMarkdown(content: string): Chunk[] {
     }
   }
 
-  function flushSection(): void {
-    const text = currentLines.join("\n").trim();
-    currentLines = [];
-    if (text.length < MIN_CHUNK_CHARS) return;
+  // A section's heading goes inline wherever it differs from the one stated before it.
+  function bufferText(lead: string): string {
+    return buffer
+      .map(({ crumb, text }, i) => {
+        const previous = i === 0 ? lead : buffer[i - 1].crumb;
+        return crumb && crumb !== previous ? crumb + "\n\n" + text : text;
+      })
+      .join("\n\n");
+  }
 
-    const breadcrumb = buildBreadcrumb(headingStack);
-    const prefix = (chunkIndex === 0 && frontmatter ? frontmatter + "\n\n" : "") +
-      (breadcrumb ? breadcrumb + "\n\n" : "");
+  function emit(): void {
+    const firstCrumb = buffer[0].crumb;
+    const prefix = (chunks.length === 0 && frontmatter ? frontmatter + "\n\n" : "") +
+      (firstCrumb ? firstCrumb + "\n\n" : "");
+    const text = bufferText(firstCrumb);
     const fullContent = prefix + text;
 
     if (fullContent.length <= MAX_CHUNK_CHARS) {
       chunks.push({
         content: fullContent,
-        index: chunkIndex++,
-        metadata: { heading: breadcrumb || undefined },
+        index: chunks.length,
+        metadata: { heading: firstCrumb || undefined },
       });
     } else {
-      const subChunks = splitOnParagraphs(text, prefix, chunkIndex);
-      for (const sc of subChunks) {
-        sc.metadata.heading = breadcrumb || undefined;
+      // Continuations belong to the last section, which is what overflowed.
+      const lastCrumb = buffer[buffer.length - 1].crumb;
+      const continuationPrefix = lastCrumb ? lastCrumb + "\n\n" : "";
+      const parts = splitOnParagraphs(text, prefix, chunks.length, continuationPrefix);
+      parts.forEach((sc, i) => {
+        sc.metadata.heading = (i === 0 ? firstCrumb : lastCrumb) || undefined;
         chunks.push(sc);
-      }
-      chunkIndex += subChunks.length;
+      });
     }
+
+    buffer = [];
+  }
+
+  function flushSection(): void {
+    const text = currentLines.join("\n").trim();
+    currentLines = [];
+    if (text.length === 0) return;
+
+    buffer.push({ crumb: buildBreadcrumb(headingStack), text });
+
+    if (bufferText(buffer[0].crumb).length >= MIN_CHUNK_CHARS) emit();
   }
 
   for (let i = lineStart; i < lines.length; i++) {
@@ -119,5 +145,17 @@ export function chunkMarkdown(content: string): Chunk[] {
   }
 
   flushSection();
+
+  if (buffer.length > 0) {
+    const last = chunks[chunks.length - 1];
+    const tail = (buffer[0].crumb ? buffer[0].crumb + "\n\n" : "") + bufferText(buffer[0].crumb);
+    // Attach a sub-floor remainder rather than emit the tiny chunk the floor prevents.
+    if (last && last.content.length + tail.length + 2 <= MAX_CHUNK_CHARS) {
+      last.content += "\n\n" + tail;
+    } else {
+      emit();
+    }
+  }
+
   return chunks;
 }

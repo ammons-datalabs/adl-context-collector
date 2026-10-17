@@ -86,14 +86,14 @@ describe("loadConfig", () => {
 
   it("deep-merges partial config from JSON file", async () => {
     const config = await loadConfigWith({
-      serverName: "work-brain",
+      serverName: "work-collector",
       tools: {
         search_context: {
           description: "Search work knowledge."
         }
       }
     });
-    expect(config.serverName).toBe("work-brain");
+    expect(config.serverName).toBe("work-collector");
     expect(config.tools.search_context.description).toBe("Search work knowledge.");
     expect(config.tools.context_stats.description).toContain("statistics");
     expect(config.tools.lookup_fact.keyExamples).toEqual(["project_status", "deploy_date"]);
@@ -145,11 +145,11 @@ describe("loadConfig", () => {
 
   it("ignores unknown keys in config", async () => {
     const config = await loadConfigWith({
-      serverName: "test-brain",
+      serverName: "test-collector",
       unknownTopLevel: true,
       tools: { search_context: { description: "Custom.", unknownField: 42 } }
     });
-    expect(config.serverName).toBe("test-brain");
+    expect(config.serverName).toBe("test-collector");
     expect(config.tools.search_context.description).toBe("Custom.");
   });
 
