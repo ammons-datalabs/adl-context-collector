@@ -11,7 +11,7 @@ function baseConfig(overrides: Partial<CollectorConfig>): CollectorConfig {
     serverName: "t", vaultRoot: "/vault", peopleFile: null, categories: [],
     embedder: { url: "", model: "", dimensions: 1, apiKey: null },
     metadataExtractor: { enabled: false, provider: "openai", url: "", model: "", apiKey: null },
-    search: { min_similarity: 0.3, domain_boost: 0, ef_search: 200 },
+    search: { min_similarity: 0.3, domain_boost: 0, ef_search: 200, identifier_max_df: 0, identifier_cues: [] },
     tools: {} as CollectorConfig["tools"],
     indexSync: null, additionalRoots: null,
     ...overrides,

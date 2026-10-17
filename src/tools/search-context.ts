@@ -1,5 +1,10 @@
 import { query, withTransaction } from "../db.js";
 import { generateEmbedding } from "../services/embedder.js";
+import {
+  cuedIdentifiers,
+  lexicalFirst,
+  lexicalSearch,
+} from "../services/lexical-search.js";
 import { loadConfig } from "../config.js";
 
 // The caller cannot read server config, so the description states the behaviour it will
@@ -8,6 +13,15 @@ export function domainArgDescription(boost: number): string {
   return boost > 0
     ? "Prefer a domain: matching captures rank higher rather than others being excluded. Facts are still filtered to it."
     : "Filter to a specific domain.";
+}
+
+// A lexical hit says so: it was returned for naming a term, not for embedding close to
+// the query, and its cosine is shown alongside rather than standing in for the reason.
+export function scoreLabel(r: { similarity?: unknown; lexical?: unknown }): string {
+  const pct =
+    r.similarity == null ? null : `${(Number(r.similarity) * 100).toFixed(1)}%`;
+  if (!r.lexical) return `${pct} match`;
+  return pct ? `keyword match · ${pct}` : "keyword match";
 }
 
 export async function searchContext(args: {
@@ -113,6 +127,34 @@ export async function searchContext(args: {
         })
       : [await query(factSql, factParams), await query(captureSql, captureParams)];
 
+  // When a configured cue names an identifier few captures contain, the lexical leg leads
+  // rather than being blended: the vector leg is confidently wrong on exactly those queries.
+  // Ungated queries return the vector rows untouched, so semantic search is unchanged.
+  let captureRows: Record<string, unknown>[] = captureResult.rows;
+  const identifiers = await cuedIdentifiers(
+    args.query,
+    search.identifier_max_df,
+    search.identifier_cues
+  );
+  if (identifiers.length > 0) {
+    const lexicalRows = await lexicalSearch({
+      queryText: args.query,
+      identifiers,
+      // A boosted domain prefers rather than excludes, so the lexical leg must not
+      // hard-filter on one: a capture's domain is only ~90% reproducible, and the
+      // vector leg is too weak on identifier queries to recover a wrongly dropped row.
+      domain: boosting ? null : args.domain ?? null,
+      // Keyword scores are not on the cosine scale, so the boost keeps its share of the floor.
+      boost: boosting ? { domain: args.domain!, factor: 1 + search.domain_boost / search.min_similarity } : null,
+      vec,
+      dims,
+      providerUrl: embedder.url,
+      model: embedder.model,
+      limit,
+    });
+    captureRows = lexicalFirst(captureRows, lexicalRows).slice(0, limit);
+  }
+
   const sections: string[] = [];
 
   if (factResult.rows.length > 0) {
@@ -127,11 +169,11 @@ export async function searchContext(args: {
     sections.push(`**Facts** (current)\n${factText}`);
   }
 
-  if (captureResult.rows.length > 0) {
-    const captureText = captureResult.rows
+  if (captureRows.length > 0) {
+    const captureText = captureRows
       .map(
         (r: Record<string, unknown>, i: number) =>
-          `**${i + 1}. [${r.domain}/${r.type}] (${(Number(r.similarity) * 100).toFixed(1)}% match)**\n` +
+          `**${i + 1}. [${r.domain}/${r.type}] (${scoreLabel(r)})**\n` +
           `${r.content}\n` +
           `_Topics: ${(r.topics as string[])?.join(", ") || "none"} | People: ${(r.people as string[])?.join(", ") || "none"} | Source: ${r.source_file || "capture"}_`
       )

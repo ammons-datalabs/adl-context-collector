@@ -188,6 +188,24 @@ Set `"provider": "local"` to classify without a network call: the domain comes f
 
 Set `"enabled": false` to skip metadata extraction entirely — content is still searchable via embeddings, but won't have auto-extracted topics, domains, or action items.
 
+### Identifier search
+
+Semantic search treats "PR 204" and "PR 267" as near-identical. To send queries that name an identifier to keyword search instead, give a frequency cap and the cues that mark an identifier in your vault:
+
+```json
+{
+  "search": {
+    "identifier_max_df": 1000,
+    "identifier_cues": [
+      "\\b(?:pr|pull\\s+request|issue)\\s*#?\\s*(\\d+)\\b",
+      "/(?:pull|issues)/(\\d+)\\b"
+    ]
+  }
+}
+```
+
+Each cue is a case-insensitive regular expression whose first group captures the identifier. When a cued number appears in between 1 and `identifier_max_df` captures, keyword search leads the results and returns only captures containing that number. Year-shaped numbers never count, and a bare number with no cue stays with semantic search. Both settings are off by default.
+
 ### Custom domains and capture types
 
 Via config `.env`:
