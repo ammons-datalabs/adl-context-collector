@@ -1,12 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-vi.mock("../../db.js", () => ({ query: vi.fn() }));
+vi.mock("../../db.js", () => {
+  const query = vi.fn();
+  return { query, withTransaction: vi.fn(async (fn: (client: unknown) => unknown) => fn({ query })) };
+});
 vi.mock("../../services/embedder.js", () => ({
   generateEmbedding: vi.fn().mockResolvedValue([0.1]),
 }));
 vi.mock("../../config.js", () => ({
   loadConfig: vi.fn().mockReturnValue({
     embedder: { url: "http://e", model: "m", dimensions: 1 },
+    search: { min_similarity: 0.3 },
   }),
 }));
 
