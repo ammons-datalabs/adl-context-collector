@@ -291,12 +291,12 @@ claude mcp add personal-vault \
   -- npx tsx /path/to/adl-context-collector/src/index.ts
 
 # Work vault (user-scoped — available everywhere)
-claude mcp add -s user work-vault \
+claude mcp add -s user project-vault \
   -e DOTENV_CONFIG_PATH=~/vaults/work/.env \
   -- npx tsx /path/to/adl-context-collector/src/index.ts
 ```
 
-Each vault appears as a separate MCP server with its own tool prefix (`personal-vault - search_context`, `work-vault - save_fact`, etc.).
+Each vault appears as a separate MCP server with its own tool prefix (`personal-vault - search_context`, `project-vault - save_fact`, etc.).
 
 ## Local Setup (Ollama)
 

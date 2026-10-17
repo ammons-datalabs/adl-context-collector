@@ -53,7 +53,7 @@ describe("projectPulse — open issues awareness bucket", () => {
       recent_issues: [
         issue({ number: 1, title: "brand new",
           created_at: iso(0.5 * DAY), updated_at: iso(0.2 * DAY) }),
-        issue({ number: 2, title: "older but active", assignee: "jack",
+        issue({ number: 2, title: "older but active", assignee: "casey",
           created_at: iso(10 * DAY), updated_at: iso(0.5 * DAY) }),
         issue({ number: 3, title: "older, touched mid-window",
           created_at: iso(20 * DAY), updated_at: iso(10 * DAY) }),

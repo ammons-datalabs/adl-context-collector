@@ -17,7 +17,7 @@ vi.mock("../../config.js", () => ({
 }));
 vi.mock("../../services/people.js", () => ({
   canonicalizePeople: vi.fn((names: string[]) =>
-    (names ?? []).map((n) => (n === "Adam-Hammo" ? "adam" : n.toLowerCase()))
+    (names ?? []).map((n) => (n === "Morgan-K" ? "morgan" : n.toLowerCase()))
   ),
 }));
 
@@ -84,7 +84,7 @@ describe("prepareChunk", () => {
       type: "note",
       domain: "platform",
       topics: ["t"],
-      people: ["Adam-Hammo", "andrew"],
+      people: ["Morgan-K", "alex"],
       action_items: [],
       dates: null,
     });
@@ -97,7 +97,7 @@ describe("prepareChunk", () => {
     );
 
     expect(prepared).not.toBeNull();
-    expect(prepared!.captureArgs[4]).toEqual(["adam", "andrew"]);
+    expect(prepared!.captureArgs[4]).toEqual(["morgan", "alex"]);
   });
 
   it("uses the type override instead of the LLM-extracted type ($2)", async () => {

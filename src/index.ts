@@ -186,7 +186,7 @@ server.tool(
   config.tools.project_pulse.description,
   {
     repo: z.string().optional().describe(
-      "Filter to a specific repo (e.g. 'taxonomy-builder'). Omit for cross-repo view."
+      "Filter to a specific repo (e.g. 'acme-web'). Omit for cross-repo view."
     ),
   },
   async (args) => {
@@ -196,7 +196,7 @@ server.tool(
         content: [{
           type: "text" as const,
           text: JSON.stringify({
-            error: "vaultRoot not configured. Add vaultRoot to your work-vault config JSON.",
+            error: "vaultRoot not configured. Add vaultRoot to your vault config JSON.",
           }),
         }],
       };

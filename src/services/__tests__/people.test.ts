@@ -20,9 +20,9 @@ describe("canonicalizePeople", () => {
       peopleFile: null,
     });
     const { canonicalizePeople } = await import("../people.js");
-    expect(canonicalizePeople(["Adam-Hammo", "andrew"])).toEqual([
-      "adam-hammo",
-      "andrew",
+    expect(canonicalizePeople(["Morgan-K", "alex"])).toEqual([
+      "morgan-k",
+      "alex",
     ]);
   });
 });
@@ -52,65 +52,65 @@ describe("canonicalizePeople with people.yaml", () => {
 
   it("collapses aliases to canonical names", async () => {
     const { canonicalizePeople } = await loadWith(`
-adam:
-  aliases: [Adam-Hammo, "adam hamilton"]
-andrew:
-  aliases: [mootpointer]
+morgan:
+  aliases: [Morgan-K, "morgan king"]
+alex:
+  aliases: [kitekeeper]
 `);
-    expect(canonicalizePeople(["Adam-Hammo", "mootpointer"])).toEqual([
-      "adam",
-      "andrew",
+    expect(canonicalizePeople(["Morgan-K", "kitekeeper"])).toEqual([
+      "morgan",
+      "alex",
     ]);
   });
 
   it("is case-insensitive on input", async () => {
     const { canonicalizePeople } = await loadWith(`
-andrew:
-  aliases: [mootpointer]
+alex:
+  aliases: [kitekeeper]
 `);
-    expect(canonicalizePeople(["MOOTPOINTER", "MootPointer"])).toEqual(["andrew"]);
+    expect(canonicalizePeople(["KITEKEEPER", "KiteKeeper"])).toEqual(["alex"]);
   });
 
   it("treats canonical name as its own alias", async () => {
     const { canonicalizePeople } = await loadWith(`
-adam: {}
+morgan: {}
 `);
-    expect(canonicalizePeople(["adam", "ADAM"])).toEqual(["adam"]);
+    expect(canonicalizePeople(["morgan", "MORGAN"])).toEqual(["morgan"]);
   });
 
   it("passes unknown names through (lowercased) without dropping", async () => {
     const { canonicalizePeople } = await loadWith(`
-adam: {}
+morgan: {}
 `);
-    expect(canonicalizePeople(["unknown_person", "Adam"])).toEqual([
+    expect(canonicalizePeople(["unknown_person", "Morgan"])).toEqual([
       "unknown_person",
-      "adam",
+      "morgan",
     ]);
   });
 
   it("drops names listed in _drop", async () => {
     const { canonicalizePeople } = await loadWith(`
 _drop: [claude, bot]
-adam: {}
+morgan: {}
 `);
-    expect(canonicalizePeople(["claude", "Adam", "Bot"])).toEqual(["adam"]);
+    expect(canonicalizePeople(["claude", "Morgan", "Bot"])).toEqual(["morgan"]);
   });
 
   it("dedupes after canonicalization", async () => {
     const { canonicalizePeople } = await loadWith(`
-adam:
-  aliases: [Adam-Hammo]
+morgan:
+  aliases: [Morgan-K]
 `);
-    expect(canonicalizePeople(["adam", "Adam-Hammo", "ADAM"])).toEqual(["adam"]);
+    expect(canonicalizePeople(["morgan", "Morgan-K", "MORGAN"])).toEqual(["morgan"]);
   });
 
   it("throws when an alias maps to two different canonicals", async () => {
     writeFileSync(
       yamlPath,
       `
-adam:
+morgan:
   aliases: [shared]
-andrew:
+alex:
   aliases: [shared]
 `,
     );
@@ -129,8 +129,8 @@ andrew:
   it("ignores reserved underscore-prefixed keys other than _drop", async () => {
     const { canonicalizePeople } = await loadWith(`
 _meta: anything
-adam: {}
+morgan: {}
 `);
-    expect(canonicalizePeople(["_meta", "adam"])).toEqual(["_meta", "adam"]);
+    expect(canonicalizePeople(["_meta", "morgan"])).toEqual(["_meta", "morgan"]);
   });
 });
