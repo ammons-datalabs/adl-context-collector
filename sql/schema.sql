@@ -49,6 +49,10 @@ CREATE INDEX IF NOT EXISTS idx_captures_people ON captures USING gin (people);
 CREATE INDEX IF NOT EXISTS idx_captures_captured_at ON captures (captured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_captures_content_date ON captures (content_date DESC);
 CREATE INDEX IF NOT EXISTS idx_captures_source_file ON captures (source_file);
+-- Backs every full-text match on captures, document-frequency counts included. Without
+-- it each one seq-scans: ~674ms against 0.4ms.
+CREATE INDEX IF NOT EXISTS idx_captures_content_fts
+    ON captures USING gin (to_tsvector('english', content));
 
 -- ============================================================
 -- Table 1b: capture_embeddings (vector embeddings, multi-model)

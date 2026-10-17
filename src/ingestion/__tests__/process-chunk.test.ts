@@ -12,6 +12,7 @@ vi.mock("../../services/hasher.js", () => ({
 vi.mock("../../config.js", () => ({
   loadConfig: vi.fn().mockReturnValue({
     embedder: { url: "http://e", model: "m", dimensions: 3 },
+    metadataExtractor: { enabled: true, provider: "openai", url: "http://x", model: "m", apiKey: null },
   }),
 }));
 vi.mock("../../services/people.js", () => ({
@@ -74,7 +75,7 @@ describe("prepareChunk", () => {
     expect(prepared!.captureArgs[8]).toBeNull(); // no heading stays null, not ""
     expect(hashContent).toHaveBeenCalledWith("onetwo");
     expect(generateEmbedding).toHaveBeenCalledWith("onetwo");
-    expect(extractMetadata).toHaveBeenCalledWith("onetwo");
+    expect(extractMetadata).toHaveBeenCalledWith("onetwo", [0.1, 0.2, 0.3]);
   });
 
   it("puts the canonicalized people array in captureArgs ($5)", async () => {

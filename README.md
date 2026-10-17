@@ -74,7 +74,7 @@ DATABASE_URL=postgresql://localhost:5432/my_context
 OPENAI_API_KEY=sk-your-key-here
 ```
 
-Optionally create a config file for custom domains, categories, and tool descriptions. See [Configuration](#configuration) below.
+Create a config file and point `COLLECTOR_CONFIG` at it from that `.env`. The server refuses to start without one; `{}` takes every default. See [Configuration](#configuration) below.
 
 ### 4. Register the MCP server
 
@@ -118,7 +118,7 @@ context-collector uses a JSON config file with sensible defaults. You only need 
 
 ### Minimal config
 
-No config file needed — defaults work out of the box if you have `OPENAI_API_KEY` set.
+A config file is required, so that a missing one cannot silently fall back to the remote defaults. `{}` takes every default, which needs `OPENAI_API_KEY` set.
 
 ### Custom config
 
@@ -183,6 +183,8 @@ By default, context-collector uses GPT-4o-mini to extract metadata (type, domain
   }
 }
 ```
+
+Set `"provider": "local"` to classify without a network call: the domain comes from the nearest labelled captures and the topics from the chunk's rarest terms, while type, action items and dates stay empty. It needs the full-text index in `sql/schema.sql`.
 
 Set `"enabled": false` to skip metadata extraction entirely — content is still searchable via embeddings, but won't have auto-extracted topics, domains, or action items.
 

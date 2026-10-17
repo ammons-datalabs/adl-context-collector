@@ -3,6 +3,7 @@ import { generateEmbedding } from "../services/embedder.js";
 import { extractMetadata } from "../services/metadata-extractor.js";
 import { hashContent } from "../services/hasher.js";
 import { loadConfig } from "../config.js";
+import { validDomain } from "../types.js";
 import { SOURCE_TYPES } from "../ingestion/types.js";
 import { canonicalizePeople } from "../services/people.js";
 
@@ -29,14 +30,14 @@ export async function captureThought(args: {
     };
   }
 
-  // Generate embedding and extract metadata in parallel
-  const [embedding, metadata] = await Promise.all([
-    generateEmbedding(args.content),
-    extractMetadata(args.content),
-  ]);
+  const embedding = await generateEmbedding(args.content);
+  const metadata = await extractMetadata(args.content, embedding);
 
-  const domain = args.domain ?? metadata?.domain ?? "general";
-  const captureType = args.type ?? metadata?.type ?? "thought";
+  // Falls back to "general" only where it is a configured domain, so a vault with its own
+  // vocabulary gets NULL rather than a label its searches can never match.
+  const domain = args.domain ?? validDomain(metadata?.domain) ?? validDomain("general");
+  // The local extractor returns an empty type, which `??` would store as-is.
+  const captureType = args.type ?? (metadata?.type || "thought");
 
   const { embedder } = loadConfig();
 

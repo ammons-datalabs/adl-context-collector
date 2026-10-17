@@ -74,14 +74,19 @@ describe("loadConfig", () => {
     return loadConfig();
   }
 
-  it("returns generic defaults when COLLECTOR_CONFIG is not set", async () => {
+  // Was: "returns generic defaults when COLLECTOR_CONFIG is not set". The built-in
+  // defaults point at OpenAI, so falling back to them silently sent vault content to a
+  // remote endpoint whenever an invocation forgot the variable.
+  it("refuses to run unconfigured rather than defaulting to the remote provider", async () => {
     vi.stubEnv("COLLECTOR_CONFIG", "");
     const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
-    expect(config.serverName).toBe("context-collector");
-    expect(config.tools.search_context.description).toContain("semantic similarity");
-    expect(config.tools.save_fact.currencies).toBeNull();
-    expect(config.tools.save_fact.units).toBeNull();
+    expect(() => loadConfig()).toThrow(/COLLECTOR_CONFIG/);
+  });
+
+  it("names the remote endpoint it is refusing to default to", async () => {
+    vi.stubEnv("COLLECTOR_CONFIG", "");
+    const { loadConfig } = await import("../config.js");
+    expect(() => loadConfig()).toThrow(/openai\.com/);
   });
 
   it("deep-merges partial config from JSON file", async () => {
@@ -120,12 +125,18 @@ describe("loadConfig", () => {
     expect(config.tools.save_fact.currencies).toEqual(["USD", "EUR"]);
   });
 
-  it("falls back to defaults when COLLECTOR_CONFIG points to nonexistent file", async () => {
+  // Was: "falls back to defaults when COLLECTOR_CONFIG points to nonexistent file". A
+  // typo in the path is the same silent hand-off to the remote provider as no path at all.
+  it("refuses when COLLECTOR_CONFIG points at a file that is not there", async () => {
     vi.stubEnv("COLLECTOR_CONFIG", join(tempDir, "nonexistent.json"));
     const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
-    expect(config.serverName).toBe("context-collector");
-    expect(config.tools.save_fact.currencies).toBeNull();
+    expect(() => loadConfig()).toThrow(/nonexistent\.json/);
+  });
+
+  it("says the config file is missing rather than reporting a bare ENOENT", async () => {
+    vi.stubEnv("COLLECTOR_CONFIG", join(tempDir, "nonexistent.json"));
+    const { loadConfig } = await import("../config.js");
+    expect(() => loadConfig()).toThrow(/openai\.com/);
   });
 
   it("throws on invalid JSON", async () => {
@@ -160,20 +171,20 @@ describe("loadConfig", () => {
     expect(config.categories).toEqual(["metric", "status", "blocker"]);
   });
 
+  // Reached through a config file that omits the block, which is how a real vault gets
+  // them; loading with no COLLECTOR_CONFIG at all now throws.
   it("includes default embedder config", async () => {
-    vi.stubEnv("COLLECTOR_CONFIG", "");
-    const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
+    const config = await loadConfigWith({});
     expect(config.embedder.url).toBe("https://api.openai.com/v1/embeddings");
     expect(config.embedder.model).toBe("text-embedding-3-small");
     expect(config.embedder.dimensions).toBe(1536);
     expect(config.embedder.apiKey).toBe("env:OPENAI_API_KEY");
   });
 
+  // Reached through a config file that omits the block, which is how a real vault gets
+  // them; loading with no COLLECTOR_CONFIG at all now throws.
   it("includes default metadataExtractor config", async () => {
-    vi.stubEnv("COLLECTOR_CONFIG", "");
-    const { loadConfig } = await import("../config.js");
-    const config = loadConfig();
+    const config = await loadConfigWith({});
     expect(config.metadataExtractor.enabled).toBe(true);
     expect(config.metadataExtractor.url).toBe("https://api.openai.com/v1/chat/completions");
     expect(config.metadataExtractor.model).toBe("gpt-4o-mini");
