@@ -8,7 +8,7 @@ export async function lookupFact(args: {
   const asOf = args.as_of ?? new Date().toISOString().split("T")[0];
 
   const result = await query(
-    `SELECT key, value, value_numeric, currency, unit, context, as_of, source_file, domain, category
+    `SELECT key, value, value_numeric, currency, unit, context, to_char(as_of, 'YYYY-MM-DD') AS as_of, source_file, domain, category
      FROM facts
      WHERE key = $1
        AND ($2::text IS NULL OR domain = $2)

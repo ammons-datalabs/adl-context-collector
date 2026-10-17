@@ -9,6 +9,7 @@ import { lookupFact } from "./tools/lookup-fact.js";
 import { searchFacts } from "./tools/search-facts.js";
 import { captureThought } from "./tools/capture-thought.js";
 import { saveFact } from "./tools/save-fact.js";
+import { saveFactShape, captureContent } from "./tools/save-fact-schema.js";
 import { listRecent } from "./tools/list-recent.js";
 import { contextStats } from "./tools/context-stats.js";
 import { ingestDocument } from "./tools/ingest-document.js";
@@ -108,11 +109,9 @@ server.tool(
   "capture_thought",
   config.tools.capture_thought.description,
   {
-    content: z
-      .string()
-      .describe(
-        "The thought to save. Write as a self-contained statement that makes sense without prior context."
-      ),
+    content: captureContent.describe(
+      "The thought to save. Write as a self-contained statement that makes sense without prior context."
+    ),
     domain: z
       .enum(DOMAINS as [string, ...string[]])
       .optional()
@@ -126,41 +125,10 @@ server.tool(
 );
 
 // 5. Save/update a structured fact
-const saveFactCurrency = config.tools.save_fact.currencies
-  ? z.enum(config.tools.save_fact.currencies as [string, ...string[]]).optional()
-  : z.string().optional().describe("Currency code (e.g. USD, EUR)");
-
-const saveFactUnit = config.tools.save_fact.units
-  ? z.enum(config.tools.save_fact.units as [string, ...string[]]).optional()
-  : z.string().optional().describe("Recurrence unit (e.g. monthly, annual)");
-
 server.tool(
   "save_fact",
   config.tools.save_fact.description,
-  {
-    domain: z.enum(DOMAINS as [string, ...string[]]),
-    category: z
-      .string()
-      .describe(`Fact category: ${config.categories.join(", ")}`),
-    key: z
-      .string()
-      .describe(
-        exampleList("Stable snake_case identifier", config.tools.save_fact.keyExamples)
-      ),
-    value: z.string().describe("The value as a readable string"),
-    value_numeric: z.number().optional().describe("Numeric value if applicable"),
-    currency: saveFactCurrency,
-    unit: saveFactUnit,
-    context: z.string().optional().describe("Brief context for this fact"),
-    people: z
-      .array(z.string())
-      .optional()
-      .describe(config.tools.save_fact.peopleDescription),
-    as_of: z
-      .string()
-      .optional()
-      .describe("Date this fact is true as of (YYYY-MM-DD, default: today)"),
-  },
+  saveFactShape,
   async (args) => saveFact(args)
 );
 

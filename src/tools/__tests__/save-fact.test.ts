@@ -7,6 +7,16 @@ vi.mock("../../services/embedder.js", () => ({
 vi.mock("../../config.js", () => ({
   loadConfig: vi.fn().mockReturnValue({
     embedder: { url: "http://e", model: "m", dimensions: 1 },
+    categories: ["status", "cost", "date", "contact", "preference", "metric", "location", "definition"],
+    tools: {
+      save_fact: {
+        description: "d",
+        keyExamples: [],
+        currencies: null,
+        units: null,
+        peopleDescription: "p",
+      },
+    },
   }),
 }));
 vi.mock("../../services/people.js", () => ({
@@ -186,4 +196,162 @@ describe("saveFact", () => {
     expect(text).toContain("https://auth.example/admin/");
     expect(text).toContain("Prod Keycloak admin console");
   });
+});
+
+// Observed forms of a mis-serialized call folding later parameters into an
+// earlier string field.
+const ABSORBED = '</parameter>\n<parameter name="context">swallowed';
+const ABSORBED_VALUE = '</value>\n<context>swallowed</context>';
+const ABSORBED_CONTEXT = '</context><people>["example-person"]</people></invoke>';
+
+describe("saveFact input rejection", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    db.resetDbMock();
+    mockFactWrites();
+  });
+
+  it("rejects absorbed parameter tags in value", async () => {
+    const { saveFact } = await import("../save-fact.js");
+    await expect(
+      saveFact({
+        domain: "platform",
+        category: "status",
+        key: "some_key",
+        value: `real content${ABSORBED}`,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it.each([
+    ["value wrapper", { value: `real${ABSORBED_VALUE}` }],
+    ["context wrapper", { value: "clean", context: `real${ABSORBED_CONTEXT}` }],
+    ["trailing invocation", { value: "real content.</invoke>" }],
+    ["domain", { domain: "platform</invoke>", value: "clean" }],
+    ["category", { category: "status</invoke>", value: "clean" }],
+  ])("rejects absorbed %s markup before embedding or writing", async (_name, fields) => {
+    const { generateEmbedding } = await import("../../services/embedder.js");
+    const { saveFact } = await import("../save-fact.js");
+    await expect(
+      saveFact({
+        domain: "platform",
+        category: "status",
+        key: "some_key",
+        ...fields,
+      }),
+    ).rejects.toThrow();
+
+    expect(generateEmbedding).not.toHaveBeenCalled();
+    expect(db.clientQuery).not.toHaveBeenCalled();
+  });
+
+  it("rejects absorbed parameter tags in key", async () => {
+    const { saveFact } = await import("../save-fact.js");
+    await expect(
+      saveFact({
+        domain: "platform",
+        category: "status",
+        key: `some_key${ABSORBED}`,
+        value: "clean",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects absorbed parameter tags in a people entry", async () => {
+    const { saveFact } = await import("../save-fact.js");
+    await expect(
+      saveFact({
+        domain: "platform",
+        category: "status",
+        key: "some_key",
+        value: "clean",
+        people: [`example-person${ABSORBED}`],
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("neither embeds nor writes when input is rejected", async () => {
+    const { generateEmbedding } = await import("../../services/embedder.js");
+    const { saveFact } = await import("../save-fact.js");
+    await expect(
+      saveFact({
+        domain: "platform",
+        category: "status",
+        key: "some_key",
+        value: `real content${ABSORBED}`,
+      }),
+    ).rejects.toThrow();
+
+    expect(generateEmbedding).not.toHaveBeenCalled();
+    expect(db.clientQuery).not.toHaveBeenCalled();
+  });
+
+  it("accepts a lone closing parameter tag", async () => {
+    const { saveFact } = await import("../save-fact.js");
+    await expect(
+      saveFact({
+        domain: "platform",
+        category: "status",
+        key: "some_key",
+        value: "prose mentioning </parameter> on its own",
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it("accepts an escaped absorbed-parameter example", async () => {
+    const { saveFact } = await import("../save-fact.js");
+    await expect(
+      saveFact({
+        domain: "platform",
+        category: "status",
+        key: "some_key",
+        value: 'the signature is &lt;/parameter&gt;&lt;parameter name="context"&gt;',
+      }),
+    ).resolves.toBeDefined();
+  });
+
+  it("rejects a value longer than the cap", async () => {
+    const { saveFact } = await import("../save-fact.js");
+    await expect(
+      saveFact({
+        domain: "platform",
+        category: "status",
+        key: "some_key",
+        value: "x".repeat(2001),
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a context longer than the cap", async () => {
+    const { saveFact } = await import("../save-fact.js");
+    await expect(
+      saveFact({
+        domain: "platform",
+        category: "status",
+        key: "some_key",
+        value: "clean",
+        context: "x".repeat(1001),
+      }),
+    ).rejects.toThrow();
+  });
+
+  it.each(["2026/09/04", "2026-02-30", "2999-01-01"])(
+    "rejects invalid or future as_of date %s before embedding or writing",
+    async (as_of) => {
+      const { generateEmbedding } = await import("../../services/embedder.js");
+      const { saveFact } = await import("../save-fact.js");
+      await expect(
+        saveFact({
+          domain: "platform",
+          category: "status",
+          key: "some_key",
+          value: "clean",
+          as_of,
+        }),
+      ).rejects.toThrow();
+
+      expect(generateEmbedding).not.toHaveBeenCalled();
+      expect(db.clientQuery).not.toHaveBeenCalled();
+    },
+  );
 });
