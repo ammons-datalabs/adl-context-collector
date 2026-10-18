@@ -254,4 +254,27 @@ describe("loadConfig", () => {
     const config = await loadConfigWith({});
     expect(config.additionalRoots).toBeNull();
   });
+
+  it.each([
+    [{ min_similarity: 1.5 }, /search\.min_similarity/],
+    [{ min_similarity: -0.1 }, /search\.min_similarity/],
+    [{ domain_boost: -1 }, /search\.domain_boost/],
+    [{ ef_search: 0 }, /search\.ef_search/],
+    [{ ef_search: 1001 }, /search\.ef_search/],
+    [{ ef_search: 40.5 }, /search\.ef_search/],
+  ])("rejects an out-of-range search setting %j at load", async (search, message) => {
+    await expect(loadConfigWith({ search })).rejects.toThrow(message);
+  });
+
+  // Identifier queries scale the boost by the floor, so a zero floor makes it infinite.
+  it("rejects a domain boost paired with a zero floor", async () => {
+    await expect(
+      loadConfigWith({ search: { min_similarity: 0, domain_boost: 0.02 } })
+    ).rejects.toThrow(/search\.min_similarity/);
+  });
+
+  it("accepts a zero floor when nothing boosts", async () => {
+    const config = await loadConfigWith({ search: { min_similarity: 0 } });
+    expect(config.search.min_similarity).toBe(0);
+  });
 });

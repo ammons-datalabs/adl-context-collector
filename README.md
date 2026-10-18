@@ -188,6 +188,24 @@ Set `"provider": "local"` to classify without a network call: the domain comes f
 
 Set `"enabled": false` to skip metadata extraction entirely — content is still searchable via embeddings, but won't have auto-extracted topics, domains, or action items.
 
+### Search ranking
+
+```json
+{
+  "search": {
+    "min_similarity": 0.3,
+    "domain_boost": 0.05,
+    "ef_search": 200
+  }
+}
+```
+
+- `min_similarity` (default `0.3`, from 0 to 1): the cosine floor for `search_context`, applied to both facts and captures. Calibrate it per embedding model, since one model's "unrelated" score is another's "relevant". A `min_similarity` argument on the call overrides it.
+- `domain_boost` (default `0`): with `0`, a requested domain filters captures to that domain. Above `0`, matching captures gain this much in ranking and the rest stay visible, which suits model-assigned domains. Facts are always filtered. The floor applies before the boost, so a boost never admits a weak match, and a boost needs a floor above `0`.
+- `ef_search` (default `200`, a whole number from 1 to 1000): HNSW candidates collected before the domain filter, used whenever a domain is given. pgvector's default of 40 can find nothing in a small domain.
+
+An out-of-range value stops the server and the vault sync at startup, naming the setting.
+
 ### Identifier search
 
 Semantic search treats "PR 204" and "PR 267" as near-identical. To send queries that name an identifier to keyword search instead, give a frequency cap and the cues that mark an identifier in your vault:
