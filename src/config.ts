@@ -175,6 +175,36 @@ function normalizeConfig(config: CollectorConfig): CollectorConfig {
   return config;
 }
 
+// A bad value here would otherwise surface per query, or not at all: ef_search outside
+// pgvector's 1..1000 fails every domain search, and identifier search scales the boost by
+// 1 / floor, so the ratio must stay finite. Number.isFinite also refuses "0" and null,
+// which plain comparisons coerce into range; JSON.stringify keeps "200" from reading as 200.
+function checkSearch(search: CollectorConfig["search"]): void {
+  if (typeof search !== "object" || search === null) {
+    throw new Error(`search must be an object, got ${JSON.stringify(search)}.`);
+  }
+  const { min_similarity, domain_boost, ef_search } = search;
+  if (!(Number.isFinite(min_similarity) && min_similarity >= 0 && min_similarity <= 1)) {
+    throw new Error(
+      `search.min_similarity must be between 0 and 1, got ${JSON.stringify(min_similarity)}.`
+    );
+  }
+  if (!(Number.isFinite(domain_boost) && domain_boost >= 0)) {
+    throw new Error(`search.domain_boost must be 0 or more, got ${JSON.stringify(domain_boost)}.`);
+  }
+  if (domain_boost > 0 && !Number.isFinite(domain_boost / min_similarity)) {
+    throw new Error(
+      "search.min_similarity must be above 0 when search.domain_boost is set, and large " +
+        "enough that domain_boost / min_similarity is finite."
+    );
+  }
+  if (!(Number.isInteger(ef_search) && ef_search >= 1 && ef_search <= 1000)) {
+    throw new Error(
+      `search.ef_search must be a whole number from 1 to 1000, got ${JSON.stringify(ef_search)}.`
+    );
+  }
+}
+
 let _cached: CollectorConfig | undefined;
 
 export function loadConfig(): CollectorConfig {
@@ -218,6 +248,8 @@ export function loadConfig(): CollectorConfig {
     overrides as Record<string, unknown>,
   ) as unknown as CollectorConfig;
 
-  _cached = normalizeConfig(merged);
+  const config = normalizeConfig(merged);
+  checkSearch(config.search);
+  _cached = config;
   return _cached;
 }

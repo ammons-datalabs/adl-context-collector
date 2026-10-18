@@ -75,7 +75,8 @@ export async function classifyDomain(
  * Recover the written word behind a Porter stem by finding it in the source text.
  *
  * `to_tsvector` returns stems, so the raw terms read as typos ("supersed", "usernam").
- * The stemmer strips suffixes, so the original is the stem plus whatever follows it.
+ * The stemmer strips suffixes, so the original is the stem plus whatever follows it, and
+ * the shortest such word is the likeliest: "index" is not "indexer", "use" not "username".
  */
 export function unstem(stem: string, content: string): string {
   // Porter rewrites a trailing "y" as "i" ("clunky" -> "clunki"), which no prefix search
@@ -84,12 +85,14 @@ export function unstem(stem: string, content: string): string {
     ? [stem, `${stem.slice(0, -1)}y`]
     : [stem];
 
+  let best: string | null = null;
   for (const candidate of candidates) {
     const escaped = candidate.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const match = content.match(new RegExp(`\\b${escaped}[\\w-]*\\b`, "i"));
-    if (match) return match[0].toLowerCase();
+    for (const [word] of content.matchAll(new RegExp(`\\b${escaped}[\\w-]*\\b`, "gi"))) {
+      if (best === null || word.length < best.length) best = word.toLowerCase();
+    }
   }
-  return stem;
+  return best ?? stem;
 }
 
 /** The chunk's rarest terms, as a local stand-in for the model's topic tags. */
@@ -98,7 +101,9 @@ export async function extractTopics(
   count = TOPIC_COUNT
 ): Promise<string[]> {
   const { rows } = await query(TOPIC_SQL, [content, TOPIC_MAX_DF_RATIO, count]);
-  return (rows as Array<{ term: string }>).map((r) => unstem(r.term, content));
+  // A hyphenated word yields a stem for the whole and for each part, which can recover
+  // the same word twice ("cherry-pick" and "cherri" both give "cherry-picked").
+  return [...new Set((rows as Array<{ term: string }>).map((r) => unstem(r.term, content)))];
 }
 
 /**

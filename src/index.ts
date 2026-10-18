@@ -9,7 +9,7 @@ import { lookupFact } from "./tools/lookup-fact.js";
 import { searchFacts } from "./tools/search-facts.js";
 import { captureThought } from "./tools/capture-thought.js";
 import { saveFact } from "./tools/save-fact.js";
-import { saveFactShape, captureContent } from "./tools/save-fact-schema.js";
+import { saveFactShape, captureContent, exampleList } from "./tools/save-fact-schema.js";
 import { listRecent } from "./tools/list-recent.js";
 import { contextStats } from "./tools/context-stats.js";
 import { ingestDocument } from "./tools/ingest-document.js";
@@ -21,12 +21,6 @@ const server = new McpServer({
   name: config.serverName,
   version: "1.0.0",
 });
-
-// Helper: format example list for .describe() hints
-function exampleList(prefix: string, examples: string[]): string {
-  if (examples.length === 0) return prefix;
-  return `${prefix}, e.g. '${examples.join("', '")}'`;
-}
 
 // 1. Semantic search across captures
 server.tool(

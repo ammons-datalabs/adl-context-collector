@@ -41,6 +41,17 @@ beforeAll(async () => {
 });
 
 describe("registered save_fact tool", () => {
+  // These hints went missing once when the fields moved into the shared schema.
+  it("describes free-text currency and unit fields to the client", async () => {
+    const { tools } = await client.listTools();
+    const props = tools.find((t) => t.name === "save_fact")!.inputSchema.properties as Record<
+      string,
+      { description?: string }
+    >;
+    expect(props.currency.description).toBe("Currency code (e.g. USD, EUR)");
+    expect(props.unit.description).toBe("Recurrence unit (e.g. monthly, annual)");
+  });
+
   it("passes a well-formed call to saveFact", async () => {
     const { saveFact } = await import("../tools/save-fact.js");
     vi.mocked(saveFact).mockClear();

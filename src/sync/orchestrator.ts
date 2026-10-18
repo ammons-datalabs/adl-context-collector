@@ -168,7 +168,7 @@ async function processFile(
 
     onProgress?.(
       `[${label}] ${file.relativePath} → ${ingestResult.chunkCount} chunks` +
-      (ingestResult.status === "skipped" ? " (unchanged content)" : "")
+      (ingestResult.status === "skipped" ? " (skipped)" : "")
     );
   } catch (err) {
     result.failedCount++;

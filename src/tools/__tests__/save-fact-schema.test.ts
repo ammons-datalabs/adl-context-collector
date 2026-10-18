@@ -125,3 +125,17 @@ describe("capture_thought content", () => {
     expect(captureContent.safeParse("x".repeat(5000)).success).toBe(true);
   });
 });
+
+describe("currency and unit with configured lists", () => {
+  // The enum already lists the allowed values; fixed examples could name one it rejects.
+  it("describes them without examples the list may not contain", async () => {
+    vi.resetModules();
+    const enumCfg = join(cfgDir, "enum-config.json");
+    writeFileSync(enumCfg, JSON.stringify({ tools: { save_fact: { currencies: ["AUD"], units: ["weekly"] } } }));
+    vi.stubEnv("COLLECTOR_CONFIG", enumCfg);
+    const { saveFactShape: shape } = await import("../save-fact-schema.js");
+
+    expect(shape.currency.description).toBe("Currency code");
+    expect(shape.unit.description).toBe("Recurrence unit");
+  });
+});
