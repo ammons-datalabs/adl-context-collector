@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
 import { withTransaction } from "../db.js";
+import { persistChunks, type PreparedChunk } from "./process-chunk.js";
 
 export interface DeleteResult {
   capturesDeleted: number;
@@ -34,6 +35,29 @@ export async function releaseSource(
     [absPath, keep]
   );
   return result.rowCount ?? 0;
+}
+
+// The write half of an ingest, run inside the caller's transaction.
+export async function writeSource(
+  client: PoolClient,
+  path: string,
+  fileHash: string,
+  prepared: PreparedChunk[],
+  existed: boolean
+): Promise<{ duplicates: number; linked: number }> {
+  await lockIndexWrites(client);
+  if (existed) {
+    await releaseSource(client, path, prepared.map((p) => p.contentHash));
+  }
+  const r = await persistChunks(client, prepared);
+  await client.query(
+    `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (file_path)
+     DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
+    [path, fileHash, r.linked]
+  );
+  return r;
 }
 
 export async function deleteBySource(absPath: string): Promise<DeleteResult> {

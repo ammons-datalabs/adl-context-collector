@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } 
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
+import { makeIssue } from "./github-fixtures.js";
 
 // Runs against a real database because the defect is in what the SQL does, which the
 // mocked suites cannot see. Point TEST_DATABASE_URL at a scratch database: it is truncated.
@@ -25,6 +26,7 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
   let ingestFile: typeof import("../index.js").ingestFile;
   let deleteBySource: typeof import("../cleanup.js").deleteBySource;
   let lockIndexWrites: typeof import("../cleanup.js").lockIndexWrites;
+  let ingestGitHubIssue: typeof import("../github.js").ingestGitHubIssue;
   let dir: string;
 
   const sql = async (text: string, params?: unknown[]) => (await db.query(text, params)).rows;
@@ -41,6 +43,7 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
     db = await import("../../db.js");
     ({ ingestFile } = await import("../index.js"));
     ({ deleteBySource, lockIndexWrites } = await import("../cleanup.js"));
+    ({ ingestGitHubIssue } = await import("../github.js"));
     await db.query(await readFile(join(__dirname, "../../../sql/schema.sql"), "utf-8"));
   });
 
@@ -89,6 +92,32 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
 
     const [beta] = await sql("SELECT source_file, type FROM captures WHERE content LIKE '%Beta is a section%'");
     expect(beta).toEqual({ source_file: original, type: "review" });
+  });
+
+  it("leaves a shared capture's classification to its owner, not a later copy", async () => {
+    const original = join(dir, "original.md");
+    const copy = join(dir, "copy.md");
+    const typed = (type: string) => `---\ntype: ${type}\n---\n\n` + section("Alpha") + section("Beta");
+    await writeFile(original, typed("note"));
+    await writeFile(copy, typed("review"));
+    await ingestFile(original);
+    await ingestFile(copy);
+
+    const [beta] = await sql("SELECT source_file, type FROM captures WHERE content LIKE '%Beta is a section%'");
+    expect(beta).toEqual({ source_file: original, type: "note" });
+  });
+
+  it("backfills a link for each owned capture that predates the table, idempotently", async () => {
+    const legacy = join(dir, "legacy.md");
+    await writeFile(legacy, section("Alpha") + section("Beta"));
+    await ingestFile(legacy);
+    await db.query("DELETE FROM capture_sources");
+
+    const schema = await readFile(join(__dirname, "../../../sql/schema.sql"), "utf-8");
+    await db.query(schema);
+    await db.query(schema);
+
+    expect(await linksOf(legacy)).toBe(2);
   });
 
   it("keeps a moved file's chunks when the old path is deleted", async () => {
@@ -145,11 +174,23 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
     expect(await linksOf(emptied)).toBe(0);
   });
 
+  it("releases an issue's captures when an edit leaves it no chunks", async () => {
+    const issueSource = "github://acme/web/issues/42";
+    await ingestGitHubIssue(makeIssue(), "acme/web");
+
+    const result = await ingestGitHubIssue(makeIssue({ body: "Done." }), "acme/web");
+
+    expect(result.status).toBe("ingested");
+    expect(await sql("SELECT id FROM captures WHERE source_file = $1", [issueSource])).toEqual([]);
+    expect(await linksOf(issueSource)).toBe(0);
+  });
+
   it("records one capture for a section repeated within a file", async () => {
     const repeated = join(dir, "repeated.md");
     await writeFile(repeated, section("Alpha") + section("Alpha"));
-    await ingestFile(repeated);
+    const result = await ingestFile(repeated);
 
+    expect(result.skippedDuplicates).toBe(1);
     expect(await linksOf(repeated)).toBe(1);
     expect(await recordedCount(repeated)).toBe(1);
   });

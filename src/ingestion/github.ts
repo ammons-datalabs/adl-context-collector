@@ -1,8 +1,8 @@
 import { query, withTransaction } from "../db.js";
 import { hashContent } from "../services/hasher.js";
 import { chunkGitHubIssue, type GitHubIssue } from "./chunkers/github-issue.js";
-import { prepareChunks, persistChunks } from "./process-chunk.js";
-import { lockIndexWrites, releaseSource } from "./cleanup.js";
+import { prepareChunks } from "./process-chunk.js";
+import { writeSource } from "./cleanup.js";
 import {
   SOURCE_TYPES,
   type IngestOptions,
@@ -47,8 +47,8 @@ export async function ingestGitHubIssue(
 
   const chunks = chunkGitHubIssue(issue);
 
-  // --- Zero-chunk fix (#4): short issues aren't failures ---
-  if (chunks.length === 0) {
+  // --- Zero-chunk fix (#4): short issues aren't failures; one indexed before still releases ---
+  if (chunks.length === 0 && existingHash === null) {
     return { status: "skipped", chunkCount: 0 };
   }
 
@@ -63,24 +63,13 @@ export async function ingestGitHubIssue(
     options.domain
   );
 
-  if (failed === chunks.length) {
+  if (failed === chunks.length && chunks.length > 0) {
     return { status: "failed", chunkCount: chunks.length };
   }
 
-  await withTransaction(async (client) => {
-    await lockIndexWrites(client);
-    if (existingHash !== null) {
-      await releaseSource(client, sourcePath, prepared.map((p) => p.contentHash));
-    }
-    const { linked } = await persistChunks(client, prepared);
-    await client.query(
-      `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (file_path)
-       DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
-      [sourcePath, contentHash, linked]
-    );
-  });
+  await withTransaction((client) =>
+    writeSource(client, sourcePath, contentHash, prepared, existingHash !== null)
+  );
 
   return { status: "ingested", chunkCount: chunks.length };
 }

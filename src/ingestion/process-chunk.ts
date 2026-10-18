@@ -101,8 +101,8 @@ export async function persistChunk(
     prepared.captureArgs
   );
 
-  const inserted = Boolean(captureResult.rowCount && captureResult.rowCount > 0);
-  if (inserted) {
+  const owned = Boolean(captureResult.rowCount && captureResult.rowCount > 0);
+  if (owned) {
     const captureId = captureResult.rows[0].id;
     await client.query(
       `INSERT INTO capture_embeddings (capture_id, provider_url, model, dimensions, embedding)
@@ -117,15 +117,15 @@ export async function persistChunk(
       ]
     );
   }
-  // A duplicate's capture belongs to another file; the link is what keeps it findable
-  // from this one after that file changes.
+  // Every chunk links its file, owned or not: release dropped this file's links, and a
+  // duplicate's link is what keeps it findable after its owner changes.
   await client.query(
     `INSERT INTO capture_sources (capture_id, source_file)
      SELECT id, $2 FROM captures WHERE content_hash = $1
      ON CONFLICT DO NOTHING`,
     [prepared.contentHash, prepared.sourceFile]
   );
-  return inserted ? "inserted" : "duplicate";
+  return owned ? "inserted" : "duplicate";
 }
 
 // Concurrent prepare (embedding/metadata + arg arrays). No client, no SQL.
@@ -160,9 +160,11 @@ export async function persistChunks(
   prepared: PreparedChunk[]
 ): Promise<{ duplicates: number; linked: number }> {
   let duplicates = 0;
+  const linked = new Set<string>();
   for (const p of prepared) {
-    const outcome = await persistChunk(client, p);
-    if (outcome === "duplicate") duplicates++;
+    // A repeat within this file would refresh the row its first occurrence just wrote.
+    if (linked.has(p.contentHash) || (await persistChunk(client, p)) === "duplicate") duplicates++;
+    linked.add(p.contentHash);
   }
-  return { duplicates, linked: new Set(prepared.map((p) => p.contentHash)).size };
+  return { duplicates, linked: linked.size };
 }
