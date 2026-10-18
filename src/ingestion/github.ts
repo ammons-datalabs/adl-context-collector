@@ -2,7 +2,7 @@ import { query, withTransaction } from "../db.js";
 import { hashContent } from "../services/hasher.js";
 import { chunkGitHubIssue, type GitHubIssue } from "./chunkers/github-issue.js";
 import { prepareChunks, persistChunks } from "./process-chunk.js";
-import { releaseSource } from "./cleanup.js";
+import { lockIndexWrites, releaseSource } from "./cleanup.js";
 import {
   SOURCE_TYPES,
   type IngestOptions,
@@ -68,6 +68,7 @@ export async function ingestGitHubIssue(
   }
 
   await withTransaction(async (client) => {
+    await lockIndexWrites(client);
     if (existingHash !== null) {
       await releaseSource(client, sourcePath);
     }

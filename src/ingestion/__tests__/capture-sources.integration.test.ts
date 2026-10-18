@@ -24,6 +24,7 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
   let db: typeof import("../../db.js");
   let ingestFile: typeof import("../index.js").ingestFile;
   let deleteBySource: typeof import("../cleanup.js").deleteBySource;
+  let lockIndexWrites: typeof import("../cleanup.js").lockIndexWrites;
   let dir: string;
 
   const sql = async (text: string, params?: unknown[]) => (await db.query(text, params)).rows;
@@ -37,7 +38,7 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;
     db = await import("../../db.js");
     ({ ingestFile } = await import("../index.js"));
-    ({ deleteBySource } = await import("../cleanup.js"));
+    ({ deleteBySource, lockIndexWrites } = await import("../cleanup.js"));
     await db.query(await readFile(join(__dirname, "../../../sql/schema.sql"), "utf-8"));
   });
 
@@ -80,6 +81,28 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
     expect(await ownerOf("Alpha")).toEqual([after]);
     expect(await ownerOf("Beta")).toEqual([after]);
     expect(await linkCount(after)).toBe(2);
+  });
+
+  it("waits for a concurrent ingest's link before releasing the owner", async () => {
+    const before = join(dir, "before.md");
+    const after = join(dir, "after.md");
+    await writeFile(before, section("Alpha"));
+    await ingestFile(before);
+
+    const other = await (await db.getPool()).connect();
+    try {
+      await other.query("BEGIN");
+      await lockIndexWrites(other);
+      await other.query("INSERT INTO capture_sources (capture_id, source_file) SELECT id, $1 FROM captures", [after]);
+      const deleting = deleteBySource(before);
+      await new Promise((r) => setTimeout(r, 200));
+      await other.query("COMMIT");
+      await deleting;
+    } finally {
+      other.release();
+    }
+
+    expect(await ownerOf("Alpha")).toEqual([after]);
   });
 
   it("deletes captures and embeddings when their only file is deleted", async () => {

@@ -10,7 +10,7 @@ describe("deleteBySource", () => {
     db.resetDbMock();
   });
 
-  it("releases the file's captures, then deletes its source record, in a transaction", async () => {
+  it("locks, releases the file's captures, then deletes its source record, in a transaction", async () => {
     db.clientQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("DELETE FROM captures")) return { rowCount: 5 };
       return { rows: [], rowCount: 0 };
@@ -22,6 +22,7 @@ describe("deleteBySource", () => {
     expect(result.capturesDeleted).toBe(5);
     expect(db.txSql()).toEqual([
       "BEGIN",
+      expect.stringContaining("pg_advisory_xact_lock"),
       expect.stringContaining("DELETE FROM capture_sources"),
       expect.stringContaining("UPDATE captures"),
       expect.stringContaining("DELETE FROM captures"),

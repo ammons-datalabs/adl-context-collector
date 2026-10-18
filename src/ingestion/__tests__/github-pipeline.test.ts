@@ -93,6 +93,7 @@ describe("ingestGitHubIssue", () => {
     expect(del![1][0]).toBe("github://org/repo/issues/42");
 
     const sqls = db.txSql();
+    expect(sqls[1]).toContain("pg_advisory_xact_lock");
     expect(sqls.findIndex((s) => s.includes("DELETE"))).toBeLessThan(
       sqls.findIndex((s) => s.includes("INSERT INTO captures"))
     );

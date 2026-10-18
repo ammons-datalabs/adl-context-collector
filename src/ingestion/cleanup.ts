@@ -5,6 +5,12 @@ export interface DeleteResult {
   capturesDeleted: number;
 }
 
+// Serialises every transaction that writes captures or links. Release reads the links
+// other files hold, so a concurrent ingest or delete would otherwise lose or orphan one.
+export async function lockIndexWrites(client: PoolClient): Promise<void> {
+  await client.query("SELECT pg_advisory_xact_lock(hashtext('context-collector:index-writes'))");
+}
+
 // Drops a file's claim on its captures. A capture it owns that another file still links
 // to moves to that file instead of being deleted; only captures nothing else holds go.
 export async function releaseSource(client: PoolClient, absPath: string): Promise<number> {
@@ -24,6 +30,7 @@ export async function releaseSource(client: PoolClient, absPath: string): Promis
 
 export async function deleteBySource(absPath: string): Promise<DeleteResult> {
   return withTransaction(async (client) => {
+    await lockIndexWrites(client);
     const capturesDeleted = await releaseSource(client, absPath);
     await client.query("DELETE FROM sources WHERE file_path = $1", [absPath]);
     return { capturesDeleted };

@@ -8,7 +8,7 @@ import { chunkPdfPages } from "./chunkers/pdf.js";
 import { readPdf } from "./parsers/pdf-reader.js";
 import { prepareChunks, persistChunks } from "./process-chunk.js";
 import { parseFrontmatterOverrides } from "./frontmatter.js";
-import { releaseSource } from "./cleanup.js";
+import { lockIndexWrites, releaseSource } from "./cleanup.js";
 import {
   detectFormat,
   SOURCE_TYPES,
@@ -125,6 +125,7 @@ export async function ingestFile(
   }
 
   const { duplicates } = await withTransaction(async (client) => {
+    await lockIndexWrites(client);
     if (existing.rows.length > 0) {
       await releaseSource(client, absPath);
     }
