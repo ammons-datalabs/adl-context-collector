@@ -152,6 +152,8 @@ describe("prepareChunk", () => {
 describe("persistChunk", () => {
   const prepared = {
     captureArgs: new Array(12).fill(null),
+    sourceFile: "/vault/a.md",
+    contentHash: "h",
     embedding: [0.1],
     embedderUrl: "u",
     embedderModel: "m",

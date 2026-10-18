@@ -9,6 +9,8 @@ import type { Chunk, SourceType } from "./types.js";
 
 export interface PreparedChunk {
   captureArgs: unknown[];
+  sourceFile: string;
+  contentHash: string;
   embedding: number[];
   embedderUrl: string;
   embedderModel: string;
@@ -64,6 +66,8 @@ export async function prepareChunk(
 
     return {
       captureArgs,
+      sourceFile: sourcePath,
+      contentHash,
       embedding,
       embedderUrl: embedder.url,
       embedderModel: embedder.model,
@@ -74,9 +78,6 @@ export async function prepareChunk(
     return null;
   }
 }
-
-const SOURCE_FILE_ARG = 7;
-const CONTENT_HASH_ARG = 11;
 
 // PERSIST: the INSERTs on the transaction client. DB errors propagate so the
 // transaction rolls back.
@@ -116,7 +117,7 @@ export async function persistChunk(
     `INSERT INTO capture_sources (capture_id, source_file)
      SELECT id, $2 FROM captures WHERE content_hash = $1
      ON CONFLICT DO NOTHING`,
-    [prepared.captureArgs[CONTENT_HASH_ARG], prepared.captureArgs[SOURCE_FILE_ARG]]
+    [prepared.contentHash, prepared.sourceFile]
   );
   return inserted ? "inserted" : "duplicate";
 }
