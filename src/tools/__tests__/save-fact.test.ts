@@ -203,24 +203,13 @@ describe("saveFact", () => {
 const ABSORBED = '</parameter>\n<parameter name="context">swallowed';
 const ABSORBED_VALUE = '</value>\n<context>swallowed</context>';
 const ABSORBED_CONTEXT = '</context><people>["example-person"]</people></invoke>';
+const ABSORBED_ERROR = /absorbed tool-call markup/;
 
 describe("saveFact input rejection", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     db.resetDbMock();
     mockFactWrites();
-  });
-
-  it("rejects absorbed parameter tags in value", async () => {
-    const { saveFact } = await import("../save-fact.js");
-    await expect(
-      saveFact({
-        domain: "platform",
-        category: "status",
-        key: "some_key",
-        value: `real content${ABSORBED}`,
-      }),
-    ).rejects.toThrow();
   });
 
   it.each([
@@ -239,7 +228,7 @@ describe("saveFact input rejection", () => {
         key: "some_key",
         ...fields,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(ABSORBED_ERROR);
 
     expect(generateEmbedding).not.toHaveBeenCalled();
     expect(db.clientQuery).not.toHaveBeenCalled();
@@ -254,7 +243,7 @@ describe("saveFact input rejection", () => {
         key: `some_key${ABSORBED}`,
         value: "clean",
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(ABSORBED_ERROR);
   });
 
   it("rejects absorbed parameter tags in a people entry", async () => {
@@ -267,7 +256,7 @@ describe("saveFact input rejection", () => {
         value: "clean",
         people: [`example-person${ABSORBED}`],
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(ABSORBED_ERROR);
   });
 
   it("neither embeds nor writes when input is rejected", async () => {
@@ -280,7 +269,7 @@ describe("saveFact input rejection", () => {
         key: "some_key",
         value: `real content${ABSORBED}`,
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(ABSORBED_ERROR);
 
     expect(generateEmbedding).not.toHaveBeenCalled();
     expect(db.clientQuery).not.toHaveBeenCalled();
@@ -319,7 +308,7 @@ describe("saveFact input rejection", () => {
         key: "some_key",
         value: "x".repeat(2001),
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/exceeds .* characters/);
   });
 
   it("rejects a context longer than the cap", async () => {
@@ -332,7 +321,7 @@ describe("saveFact input rejection", () => {
         value: "clean",
         context: "x".repeat(1001),
       }),
-    ).rejects.toThrow();
+    ).rejects.toThrow(/exceeds .* characters/);
   });
 
   it.each(["2026/09/04", "2026-02-30", "2999-01-01"])(
@@ -348,7 +337,7 @@ describe("saveFact input rejection", () => {
           value: "clean",
           as_of,
         }),
-      ).rejects.toThrow();
+      ).rejects.toThrow(/as_of (must be a real date|cannot be later)/);
 
       expect(generateEmbedding).not.toHaveBeenCalled();
       expect(db.clientQuery).not.toHaveBeenCalled();
