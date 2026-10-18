@@ -173,14 +173,20 @@ describe("persistChunk", () => {
     expect(clientQuery.mock.calls[1][1][0]).toBe(7); // capture_id from RETURNING
   });
 
-  it("returns 'duplicate' (no embedding insert) when capture hits ON CONFLICT", async () => {
-    const clientQuery = vi.fn().mockResolvedValueOnce({ rowCount: 0, rows: [] });
+  it("returns 'duplicate' and links without an embedding when capture hits ON CONFLICT", async () => {
+    const clientQuery = vi
+      .fn()
+      .mockResolvedValueOnce({ rowCount: 0, rows: [] })
+      .mockResolvedValueOnce({ rowCount: 1 });
 
     const { persistChunk } = await import("../process-chunk.js");
     const outcome = await persistChunk({ query: clientQuery } as never, prepared as never);
 
     expect(outcome).toBe("duplicate");
-    expect(clientQuery).toHaveBeenCalledTimes(1);
+    expect(clientQuery.mock.calls.map((c) => c[0])).toEqual([
+      expect.stringContaining("INSERT INTO captures"),
+      expect.stringContaining("INSERT INTO capture_sources"),
+    ]);
   });
 
   it("propagates a DB error (does not swallow)", async () => {

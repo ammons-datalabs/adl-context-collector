@@ -2,6 +2,7 @@ import { query, withTransaction } from "../db.js";
 import { hashContent } from "../services/hasher.js";
 import { chunkGitHubIssue, type GitHubIssue } from "./chunkers/github-issue.js";
 import { prepareChunks, persistChunks } from "./process-chunk.js";
+import { releaseSource } from "./cleanup.js";
 import {
   SOURCE_TYPES,
   type IngestOptions,
@@ -68,7 +69,7 @@ export async function ingestGitHubIssue(
 
   await withTransaction(async (client) => {
     if (existingHash !== null) {
-      await client.query("DELETE FROM captures WHERE source_file = $1", [sourcePath]);
+      await releaseSource(client, sourcePath);
     }
     await persistChunks(client, prepared);
     const insertedCount = chunks.length - failed;

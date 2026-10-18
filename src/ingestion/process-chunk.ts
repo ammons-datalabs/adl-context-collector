@@ -75,7 +75,10 @@ export async function prepareChunk(
   }
 }
 
-// PERSIST: the two INSERTs on the transaction client. DB errors propagate so the
+const SOURCE_FILE_ARG = 7;
+const CONTENT_HASH_ARG = 11;
+
+// PERSIST: the INSERTs on the transaction client. DB errors propagate so the
 // transaction rolls back.
 export async function persistChunk(
   client: PoolClient,
@@ -91,7 +94,8 @@ export async function persistChunk(
     prepared.captureArgs
   );
 
-  if (captureResult.rowCount && captureResult.rowCount > 0) {
+  const inserted = Boolean(captureResult.rowCount && captureResult.rowCount > 0);
+  if (inserted) {
     const captureId = captureResult.rows[0].id;
     await client.query(
       `INSERT INTO capture_embeddings (capture_id, provider_url, model, dimensions, embedding)
@@ -105,9 +109,16 @@ export async function persistChunk(
         JSON.stringify(prepared.embedding),
       ]
     );
-    return "inserted";
   }
-  return "duplicate";
+  // A duplicate's capture belongs to another file; the link is what keeps it findable
+  // from this one after that file changes.
+  await client.query(
+    `INSERT INTO capture_sources (capture_id, source_file)
+     SELECT id, $2 FROM captures WHERE content_hash = $1
+     ON CONFLICT DO NOTHING`,
+    [prepared.captureArgs[CONTENT_HASH_ARG], prepared.captureArgs[SOURCE_FILE_ARG]]
+  );
+  return inserted ? "inserted" : "duplicate";
 }
 
 // Concurrent prepare (embedding/metadata + arg arrays). No client, no SQL.

@@ -431,6 +431,8 @@ psql your_database -c "SELECT extversion FROM pg_extension WHERE extname = 'vect
 
 Without this, domain-filtered searches fail with an error naming `hnsw.iterative_scan`.
 
+The schema links each capture to its owning file in `capture_sources`. Chunks a file shares with a file ingested before it have no owner row to backfill from, so they are linked only when that file is next ingested; a one-off `sync-vault --force` covers all of them.
+
 ## License
 
 ISC

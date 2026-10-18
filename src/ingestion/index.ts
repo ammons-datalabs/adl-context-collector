@@ -8,6 +8,7 @@ import { chunkPdfPages } from "./chunkers/pdf.js";
 import { readPdf } from "./parsers/pdf-reader.js";
 import { prepareChunks, persistChunks } from "./process-chunk.js";
 import { parseFrontmatterOverrides } from "./frontmatter.js";
+import { releaseSource } from "./cleanup.js";
 import {
   detectFormat,
   SOURCE_TYPES,
@@ -125,16 +126,17 @@ export async function ingestFile(
 
   const { duplicates } = await withTransaction(async (client) => {
     if (existing.rows.length > 0) {
-      await client.query("DELETE FROM captures WHERE source_file = $1", [absPath]);
+      await releaseSource(client, absPath);
     }
     const r = await persistChunks(client, prepared);
-    const insertedCount = chunks.length - failed - r.duplicates;
+    // Duplicates count: they are linked, so this file still finds them.
+    const linkedCount = chunks.length - failed;
     await client.query(
       `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
        VALUES ($1, $2, $3, NOW())
        ON CONFLICT (file_path)
        DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
-      [absPath, fileHash, insertedCount]
+      [absPath, fileHash, linkedCount]
     );
     return r;
   });
