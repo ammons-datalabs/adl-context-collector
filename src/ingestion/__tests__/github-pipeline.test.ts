@@ -78,6 +78,7 @@ describe("ingestGitHubIssue", () => {
       (c[0] as string).includes("INSERT INTO sources")
     );
     expect(upsert![1][1]).toBe(CONTENT_HASH); // file_hash = content hash
+    expect(upsert![1][2]).toBe(1); // capture_count = distinct linked chunks
   });
 
   it("releases old captures, keeping the chunks it still holds, before inserts on re-ingest", async () => {

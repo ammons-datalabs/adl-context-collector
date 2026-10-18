@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach, afterAll } from "vitest";
 import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -31,8 +31,10 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
   const ownerOf = async (marker: string) =>
     (await sql("SELECT source_file FROM captures WHERE content LIKE $1", [`%${marker} is a section%`]))
       .map((r) => r.source_file);
-  const linkCount = async (path: string) =>
+  const recordedCount = async (path: string) =>
     (await sql("SELECT capture_count FROM sources WHERE file_path = $1", [path]))[0]?.capture_count;
+  const linksOf = async (path: string) =>
+    Number((await sql("SELECT count(*) AS n FROM capture_sources WHERE source_file = $1", [path]))[0].n);
 
   beforeAll(async () => {
     process.env.DATABASE_URL = TEST_DATABASE_URL;
@@ -47,8 +49,11 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
     dir = await mkdtemp(join(tmpdir(), "capture-sources-"));
   });
 
-  afterAll(async () => {
+  afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
+  });
+
+  afterAll(async () => {
     await (await db.getPool()).end();
   });
 
@@ -66,7 +71,8 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
     expect(await ownerOf("Alpha")).toEqual([original]);
     expect(await ownerOf("Beta")).toEqual([snapshot]);
     expect(await ownerOf("Gamma")).toEqual([original]);
-    expect(await linkCount(snapshot)).toBe(2);
+    expect(await linksOf(snapshot)).toBe(2);
+    expect(await recordedCount(snapshot)).toBe(2);
   });
 
   it("refreshes a kept shared capture's classification from its owner", async () => {
@@ -97,7 +103,7 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
 
     expect(await ownerOf("Alpha")).toEqual([after]);
     expect(await ownerOf("Beta")).toEqual([after]);
-    expect(await linkCount(after)).toBe(2);
+    expect(await linksOf(after)).toBe(2);
   });
 
   it("waits for a concurrent ingest's link before releasing the owner", async () => {
@@ -120,6 +126,15 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
     }
 
     expect(await ownerOf("Alpha")).toEqual([after]);
+  });
+
+  it("records one capture for a section repeated within a file", async () => {
+    const repeated = join(dir, "repeated.md");
+    await writeFile(repeated, section("Alpha") + section("Alpha"));
+    await ingestFile(repeated);
+
+    expect(await linksOf(repeated)).toBe(1);
+    expect(await recordedCount(repeated)).toBe(1);
   });
 
   it("deletes captures and embeddings when their only file is deleted", async () => {

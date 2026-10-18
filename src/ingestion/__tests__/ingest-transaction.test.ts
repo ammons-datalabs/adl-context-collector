@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../../db.js");
 vi.mock("../process-chunk.js", () => ({
   prepareChunks: vi.fn().mockResolvedValue({ prepared: [{}], failed: 0 }),
-  persistChunks: vi.fn().mockResolvedValue({ duplicates: 0 }),
+  persistChunks: vi.fn().mockResolvedValue({ duplicates: 0, linked: 0 }),
 }));
 vi.mock("../../config.js", () => ({
   loadConfig: vi.fn().mockReturnValue({
@@ -39,7 +39,7 @@ describe("ingestFile transaction safety", () => {
     (prepareChunks as ReturnType<typeof vi.fn>).mockReset();
     (prepareChunks as ReturnType<typeof vi.fn>).mockResolvedValue({ prepared: [{}], failed: 0 });
     (persistChunks as ReturnType<typeof vi.fn>).mockReset();
-    (persistChunks as ReturnType<typeof vi.fn>).mockResolvedValue({ duplicates: 0 });
+    (persistChunks as ReturnType<typeof vi.fn>).mockResolvedValue({ duplicates: 1, linked: 3 });
   });
 
   it("locks, then releases before persisting, inside one transaction on re-ingestion", async () => {
@@ -58,6 +58,8 @@ describe("ingestFile transaction safety", () => {
     expect(db.clientQuery.mock.invocationCallOrder[del]).toBeLessThan(
       (persistChunks as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]
     );
+    const upsert = db.clientQuery.mock.calls.find((c) => (c[0] as string).includes("INSERT INTO sources"));
+    expect(upsert![1][2]).toBe(3); // capture_count = linked chunks, duplicates included
   });
 
   it("rolls back and rejects when processing throws", async () => {

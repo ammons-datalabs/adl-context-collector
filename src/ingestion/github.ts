@@ -72,14 +72,13 @@ export async function ingestGitHubIssue(
     if (existingHash !== null) {
       await releaseSource(client, sourcePath, prepared.map((p) => p.contentHash));
     }
-    await persistChunks(client, prepared);
-    const insertedCount = chunks.length - failed;
+    const { linked } = await persistChunks(client, prepared);
     await client.query(
       `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
        VALUES ($1, $2, $3, NOW())
        ON CONFLICT (file_path)
        DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
-      [sourcePath, contentHash, insertedCount]
+      [sourcePath, contentHash, linked]
     );
   });
 

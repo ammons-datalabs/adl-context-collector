@@ -158,11 +158,11 @@ export async function prepareChunks(
 export async function persistChunks(
   client: PoolClient,
   prepared: PreparedChunk[]
-): Promise<{ duplicates: number }> {
+): Promise<{ duplicates: number; linked: number }> {
   let duplicates = 0;
   for (const p of prepared) {
     const outcome = await persistChunk(client, p);
     if (outcome === "duplicate") duplicates++;
   }
-  return { duplicates };
+  return { duplicates, linked: new Set(prepared.map((p) => p.contentHash)).size };
 }

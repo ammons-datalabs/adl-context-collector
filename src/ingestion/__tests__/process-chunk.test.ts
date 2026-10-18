@@ -160,7 +160,7 @@ describe("persistChunk", () => {
     embedderDimensions: 1,
   };
 
-  it("inserts capture then embedding and returns 'inserted'", async () => {
+  it("inserts capture, embedding, then link and returns 'inserted'", async () => {
     const clientQuery = vi
       .fn()
       .mockResolvedValueOnce({ rowCount: 1, rows: [{ id: 7 }] })
@@ -173,6 +173,8 @@ describe("persistChunk", () => {
     expect(clientQuery.mock.calls[0][0]).toContain("INSERT INTO captures");
     expect(clientQuery.mock.calls[1][0]).toContain("INSERT INTO capture_embeddings");
     expect(clientQuery.mock.calls[1][1][0]).toBe(7); // capture_id from RETURNING
+    expect(clientQuery.mock.calls[2][0]).toContain("INSERT INTO capture_sources");
+    expect(clientQuery.mock.calls[2][1]).toEqual(["h", "/vault/a.md"]);
   });
 
   it("returns 'duplicate' and links without an embedding when capture hits ON CONFLICT", async () => {

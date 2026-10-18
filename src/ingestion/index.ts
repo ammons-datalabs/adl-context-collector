@@ -130,14 +130,12 @@ export async function ingestFile(
       await releaseSource(client, absPath, prepared.map((p) => p.contentHash));
     }
     const r = await persistChunks(client, prepared);
-    // Duplicates count: they are linked, so this file still finds them.
-    const linkedCount = chunks.length - failed;
     await client.query(
       `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
        VALUES ($1, $2, $3, NOW())
        ON CONFLICT (file_path)
        DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
-      [absPath, fileHash, linkedCount]
+      [absPath, fileHash, r.linked]
     );
     return r;
   });
