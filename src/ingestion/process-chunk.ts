@@ -85,6 +85,7 @@ export async function persistChunk(
   client: PoolClient,
   prepared: PreparedChunk
 ): Promise<"inserted" | "duplicate"> {
+  // A row this file already owns is refreshed; one another file owns keeps that owner's metadata.
   const captureResult = await client.query(
     `INSERT INTO captures
       (content, type, domain, topics, people, action_items, dates,
@@ -100,7 +101,6 @@ export async function persistChunk(
     prepared.captureArgs
   );
 
-  // A row this file already owns is refreshed; one another file owns keeps that owner's metadata.
   const inserted = Boolean(captureResult.rowCount && captureResult.rowCount > 0);
   if (inserted) {
     const captureId = captureResult.rows[0].id;
