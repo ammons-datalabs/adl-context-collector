@@ -6,8 +6,9 @@ import { chunkMarkdown } from "./chunkers/markdown.js";
 import { chunkText } from "./chunkers/text.js";
 import { chunkPdfPages } from "./chunkers/pdf.js";
 import { readPdf } from "./parsers/pdf-reader.js";
-import { prepareChunks, persistChunks } from "./process-chunk.js";
+import { prepareChunks } from "./process-chunk.js";
 import { parseFrontmatterOverrides } from "./frontmatter.js";
+import { writeSource } from "./cleanup.js";
 import {
   detectFormat,
   SOURCE_TYPES,
@@ -123,26 +124,15 @@ export async function ingestFile(
     };
   }
 
-  const { duplicates } = await withTransaction(async (client) => {
-    if (existing.rows.length > 0) {
-      await client.query("DELETE FROM captures WHERE source_file = $1", [absPath]);
-    }
-    const r = await persistChunks(client, prepared);
-    const insertedCount = chunks.length - failed - r.duplicates;
-    await client.query(
-      `INSERT INTO sources (file_path, file_hash, capture_count, last_imported)
-       VALUES ($1, $2, $3, NOW())
-       ON CONFLICT (file_path)
-       DO UPDATE SET file_hash = $2, capture_count = $3, last_imported = NOW()`,
-      [absPath, fileHash, insertedCount]
-    );
-    return r;
-  });
+  const { duplicates } = await withTransaction((client) =>
+    writeSource(client, absPath, fileHash, prepared, existing.rows.length > 0)
+  );
 
-  // An all-failed file returned above, so a chunkless one is a skip, not a failure.
+  // An all-failed file returned above, so a chunkless one is a skip, not a failure, unless it
+  // had been indexed: emptying it released its captures, which is a change.
   return {
     filePath: absPath,
-    status: chunks.length === 0 ? "skipped" : "ingested",
+    status: chunks.length === 0 && existing.rows.length === 0 ? "skipped" : "ingested",
     chunkCount: chunks.length,
     failedChunks: failed,
     skippedDuplicates: duplicates,

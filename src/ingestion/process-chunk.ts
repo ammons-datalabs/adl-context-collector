@@ -9,6 +9,8 @@ import type { Chunk, SourceType } from "./types.js";
 
 export interface PreparedChunk {
   captureArgs: unknown[];
+  sourceFile: string;
+  contentHash: string;
   embedding: number[];
   embedderUrl: string;
   embedderModel: string;
@@ -64,6 +66,8 @@ export async function prepareChunk(
 
     return {
       captureArgs,
+      sourceFile: sourcePath,
+      contentHash,
       embedding,
       embedderUrl: embedder.url,
       embedderModel: embedder.model,
@@ -75,23 +79,30 @@ export async function prepareChunk(
   }
 }
 
-// PERSIST: the two INSERTs on the transaction client. DB errors propagate so the
+// PERSIST: the INSERTs on the transaction client. DB errors propagate so the
 // transaction rolls back.
 export async function persistChunk(
   client: PoolClient,
   prepared: PreparedChunk
 ): Promise<"inserted" | "duplicate"> {
+  // A row this file already owns is refreshed; one another file owns keeps that owner's metadata.
   const captureResult = await client.query(
     `INSERT INTO captures
       (content, type, domain, topics, people, action_items, dates,
        source_file, source_section, source_type, chunk_index, content_hash)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-     ON CONFLICT (content_hash) DO NOTHING
+     ON CONFLICT (content_hash) DO UPDATE SET
+       type = EXCLUDED.type, domain = EXCLUDED.domain, topics = EXCLUDED.topics,
+       people = EXCLUDED.people, action_items = EXCLUDED.action_items, dates = EXCLUDED.dates,
+       source_section = EXCLUDED.source_section, source_type = EXCLUDED.source_type,
+       chunk_index = EXCLUDED.chunk_index
+     WHERE captures.source_file = EXCLUDED.source_file
      RETURNING id`,
     prepared.captureArgs
   );
 
-  if (captureResult.rowCount && captureResult.rowCount > 0) {
+  const owned = Boolean(captureResult.rowCount && captureResult.rowCount > 0);
+  if (owned) {
     const captureId = captureResult.rows[0].id;
     await client.query(
       `INSERT INTO capture_embeddings (capture_id, provider_url, model, dimensions, embedding)
@@ -105,9 +116,16 @@ export async function persistChunk(
         JSON.stringify(prepared.embedding),
       ]
     );
-    return "inserted";
   }
-  return "duplicate";
+  // Every chunk links its file, owned or not: release dropped this file's links, and a
+  // duplicate's link is what keeps it findable after its owner changes.
+  await client.query(
+    `INSERT INTO capture_sources (capture_id, source_file)
+     SELECT id, $2 FROM captures WHERE content_hash = $1
+     ON CONFLICT DO NOTHING`,
+    [prepared.contentHash, prepared.sourceFile]
+  );
+  return owned ? "inserted" : "duplicate";
 }
 
 // Concurrent prepare (embedding/metadata + arg arrays). No client, no SQL.
@@ -140,11 +158,13 @@ export async function prepareChunks(
 export async function persistChunks(
   client: PoolClient,
   prepared: PreparedChunk[]
-): Promise<{ duplicates: number }> {
+): Promise<{ duplicates: number; linked: number }> {
   let duplicates = 0;
+  const linked = new Set<string>();
   for (const p of prepared) {
-    const outcome = await persistChunk(client, p);
-    if (outcome === "duplicate") duplicates++;
+    // A repeat within this file would refresh the row its first occurrence just wrote.
+    if (linked.has(p.contentHash) || (await persistChunk(client, p)) === "duplicate") duplicates++;
+    linked.add(p.contentHash);
   }
-  return { duplicates };
+  return { duplicates, linked: linked.size };
 }

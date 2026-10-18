@@ -10,7 +10,7 @@ describe("deleteBySource", () => {
     db.resetDbMock();
   });
 
-  it("deletes captures and source record in a transaction", async () => {
+  it("locks, releases the file's captures, then deletes its source record, in a transaction", async () => {
     db.clientQuery.mockImplementation(async (sql: string) => {
       if (sql.includes("DELETE FROM captures")) return { rowCount: 5 };
       return { rows: [], rowCount: 0 };
@@ -20,11 +20,15 @@ describe("deleteBySource", () => {
     const result = await deleteBySource("/vault/old-file.md");
 
     expect(result.capturesDeleted).toBe(5);
-    const sqls = db.txSql();
-    expect(sqls[0]).toBe("BEGIN");
-    expect(sqls[1]).toContain("DELETE FROM captures");
-    expect(sqls[2]).toContain("DELETE FROM sources");
-    expect(sqls[3]).toBe("COMMIT");
+    expect(db.txSql()).toEqual([
+      "BEGIN",
+      expect.stringContaining("pg_advisory_xact_lock"),
+      expect.stringContaining("DELETE FROM capture_sources"),
+      expect.stringContaining("UPDATE captures"),
+      expect.stringContaining("DELETE FROM captures"),
+      expect.stringContaining("DELETE FROM sources"),
+      "COMMIT",
+    ]);
   });
 
   it("rolls back on error", async () => {

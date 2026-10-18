@@ -76,6 +76,24 @@ CREATE TABLE IF NOT EXISTS capture_embeddings (
 --     AND model = 'text-embedding-3-small';
 
 -- ============================================================
+-- Table 1d: capture_sources (every file that holds a capture's text)
+-- ============================================================
+-- A capture is stored once per content_hash under one owning source_file; other
+-- files with the same text link to it here, so deleting the owner does not lose it.
+CREATE TABLE IF NOT EXISTS capture_sources (
+    capture_id   BIGINT NOT NULL REFERENCES captures(id) ON DELETE CASCADE,
+    source_file  TEXT NOT NULL,
+    PRIMARY KEY (capture_id, source_file)
+);
+
+CREATE INDEX IF NOT EXISTS idx_capture_sources_source_file ON capture_sources (source_file);
+
+-- Backfill for databases that predate the table: every owner is also a link.
+INSERT INTO capture_sources (capture_id, source_file)
+SELECT id, source_file FROM captures WHERE source_file IS NOT NULL
+ON CONFLICT DO NOTHING;
+
+-- ============================================================
 -- Table 2: facts (structured key-value with temporal tracking)
 -- ============================================================
 CREATE TABLE IF NOT EXISTS facts (
