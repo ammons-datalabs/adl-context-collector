@@ -56,6 +56,11 @@ describe("extractTopics", () => {
     queryMock.mockResolvedValue({ rows: [] });
     expect(await extractTopics("the and of", 5)).toEqual([]);
   });
+
+  it("lists a word once when two of its stems recover it", async () => {
+    queryMock.mockResolvedValue({ rows: [{ term: "cherry-pick" }, { term: "cherri" }] });
+    expect(await extractTopics("we cherry-picked the fix", 5)).toEqual(["cherry-picked"]);
+  });
 });
 
 describe("extractMetadataLocal", () => {
@@ -120,5 +125,13 @@ describe("unstem", () => {
 
   it("does not match a stem that only appears mid-word", () => {
     expect(unstem("cat", "concatenate")).toBe("cat");
+  });
+
+  it("prefers the word itself over a longer word sharing its prefix", () => {
+    expect(unstem("index", "the indexer reads the index")).toBe("index");
+  });
+
+  it("prefers the shortest inflection over an unrelated longer word", () => {
+    expect(unstem("use", "the username is used")).toBe("used");
   });
 });
