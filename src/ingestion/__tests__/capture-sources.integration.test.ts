@@ -128,6 +128,23 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
     expect(await ownerOf("Alpha")).toEqual([after]);
   });
 
+  it("releases an emptied file's chunks and reports it as changed, not skipped", async () => {
+    const emptied = join(dir, "emptied.md");
+    const copy = join(dir, "copy.md");
+    await writeFile(emptied, section("Alpha") + section("Beta"));
+    await writeFile(copy, section("Beta"));
+    await ingestFile(emptied);
+    await ingestFile(copy);
+
+    await writeFile(emptied, "");
+    const result = await ingestFile(emptied);
+
+    expect(result.status).toBe("ingested");
+    expect(await ownerOf("Alpha")).toEqual([]);
+    expect(await ownerOf("Beta")).toEqual([copy]);
+    expect(await linksOf(emptied)).toBe(0);
+  });
+
   it("records one capture for a section repeated within a file", async () => {
     const repeated = join(dir, "repeated.md");
     await writeFile(repeated, section("Alpha") + section("Alpha"));
