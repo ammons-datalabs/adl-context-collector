@@ -431,7 +431,16 @@ psql your_database -c "SELECT extversion FROM pg_extension WHERE extname = 'vect
 
 Without this, domain-filtered searches fail with an error naming `hnsw.iterative_scan`.
 
-The schema links each capture to its owning file in `capture_sources`. Chunks a file shares with a file ingested before it have no owner row to backfill from, so they are linked only when that file is next ingested; a one-off `sync-vault --force` covers all of them.
+The schema links each capture to its owning file in `capture_sources`. Chunks a file shares with a file ingested before it have no owner row to backfill from, so they are linked only when that file is next ingested. `sync-vault --force` covers every file, but re-embeds every chunk and resets capture dates. To relink just the files left with no links at all, clear their stored hash and re-ingest each one:
+
+```bash
+psql your_database -Atc "UPDATE sources s SET file_hash = NULL
+  WHERE NOT EXISTS (SELECT 1 FROM capture_sources l WHERE l.source_file = s.file_path)
+    AND s.file_path NOT LIKE 'github://%' RETURNING file_path" \
+  | while read -r f; do [ -f "$f" ] && npm run ingest -- "$f" < /dev/null; done
+```
+
+A file that shares only some of its chunks is not listed by that query; `--force` is what reaches it.
 
 ## Development
 
