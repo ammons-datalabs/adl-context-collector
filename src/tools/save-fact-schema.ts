@@ -42,13 +42,21 @@ function toolText(field: string, max: number) {
 
 export const captureContent = withoutAbsorbedMarkup("content", z.string());
 
-const currency = config.tools.save_fact.currencies
-  ? z.enum(config.tools.save_fact.currencies as [string, ...string[]]).optional()
-  : toolText("currency", 32).optional().describe("Currency code (e.g. USD, EUR)");
+const currency = (
+  config.tools.save_fact.currencies
+    ? z.enum(config.tools.save_fact.currencies as [string, ...string[]])
+    : toolText("currency", 32)
+)
+  .optional()
+  .describe("Currency code (e.g. USD, EUR)");
 
-const unit = config.tools.save_fact.units
-  ? z.enum(config.tools.save_fact.units as [string, ...string[]]).optional()
-  : toolText("unit", 32).optional().describe("Recurrence unit (e.g. monthly, annual)");
+const unit = (
+  config.tools.save_fact.units
+    ? z.enum(config.tools.save_fact.units as [string, ...string[]])
+    : toolText("unit", 32)
+)
+  .optional()
+  .describe("Recurrence unit (e.g. monthly, annual)");
 
 export function exampleList(base: string, examples: string[]): string {
   return examples.length > 0 ? `${base}, e.g. '${examples.join("', '")}'` : base;

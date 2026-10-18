@@ -172,18 +172,18 @@ function normalizeConfig(config: CollectorConfig): CollectorConfig {
   if (Array.isArray(sf.units) && sf.units.length === 0) {
     sf.units = null;
   }
-  checkSearch(config.search);
   return config;
 }
 
 // A bad value here would otherwise surface per query, or not at all: ef_search outside
 // pgvector's 1..1000 fails every domain search, and a boost over a zero floor is infinite.
+// The typeof checks matter: comparisons coerce, so "0" and null would pass the ranges.
 function checkSearch(search: CollectorConfig["search"]): void {
   const { min_similarity, domain_boost, ef_search } = search;
-  if (!(min_similarity >= 0 && min_similarity <= 1)) {
+  if (!(typeof min_similarity === "number" && min_similarity >= 0 && min_similarity <= 1)) {
     throw new Error(`search.min_similarity must be between 0 and 1, got ${min_similarity}.`);
   }
-  if (!(domain_boost >= 0)) {
+  if (!(typeof domain_boost === "number" && domain_boost >= 0)) {
     throw new Error(`search.domain_boost must be 0 or more, got ${domain_boost}.`);
   }
   if (domain_boost > 0 && min_similarity === 0) {
@@ -237,6 +237,8 @@ export function loadConfig(): CollectorConfig {
     overrides as Record<string, unknown>,
   ) as unknown as CollectorConfig;
 
-  _cached = normalizeConfig(merged);
+  const config = normalizeConfig(merged);
+  checkSearch(config.search);
+  _cached = config;
   return _cached;
 }

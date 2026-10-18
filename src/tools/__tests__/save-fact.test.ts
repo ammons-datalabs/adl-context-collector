@@ -204,6 +204,7 @@ const ABSORBED = '</parameter>\n<parameter name="context">swallowed';
 const ABSORBED_VALUE = '</value>\n<context>swallowed</context>';
 const ABSORBED_CONTEXT = '</context><people>["example-person"]</people></invoke>';
 const ABSORBED_ERROR = /absorbed tool-call markup/;
+const CAP_ERROR = /exceeds .* characters/;
 
 describe("saveFact input rejection", () => {
   beforeEach(() => {
@@ -308,7 +309,7 @@ describe("saveFact input rejection", () => {
         key: "some_key",
         value: "x".repeat(2001),
       }),
-    ).rejects.toThrow(/exceeds .* characters/);
+    ).rejects.toThrow(CAP_ERROR);
   });
 
   it("rejects a context longer than the cap", async () => {
@@ -321,12 +322,16 @@ describe("saveFact input rejection", () => {
         value: "clean",
         context: "x".repeat(1001),
       }),
-    ).rejects.toThrow(/exceeds .* characters/);
+    ).rejects.toThrow(CAP_ERROR);
   });
 
-  it.each(["2026/09/04", "2026-02-30", "2999-01-01"])(
+  it.each([
+    ["2026/09/04", /as_of must be a real date/],
+    ["2026-02-30", /as_of must be a real date/],
+    ["2999-01-01", /as_of cannot be later/],
+  ])(
     "rejects invalid or future as_of date %s before embedding or writing",
-    async (as_of) => {
+    async (as_of, message) => {
       const { generateEmbedding } = await import("../../services/embedder.js");
       const { saveFact } = await import("../save-fact.js");
       await expect(
@@ -337,7 +342,7 @@ describe("saveFact input rejection", () => {
           value: "clean",
           as_of,
         }),
-      ).rejects.toThrow(/as_of (must be a real date|cannot be later)/);
+      ).rejects.toThrow(message);
 
       expect(generateEmbedding).not.toHaveBeenCalled();
       expect(db.clientQuery).not.toHaveBeenCalled();
