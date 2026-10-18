@@ -433,6 +433,19 @@ Without this, domain-filtered searches fail with an error naming `hnsw.iterative
 
 The schema links each capture to its owning file in `capture_sources`. Chunks a file shares with a file ingested before it have no owner row to backfill from, so they are linked only when that file is next ingested; a one-off `sync-vault --force` covers all of them.
 
+## Development
+
+```bash
+npm test
+```
+
+The database tests in `src/ingestion/__tests__/capture-sources.integration.test.ts` are skipped unless `TEST_DATABASE_URL` points at a scratch database. They apply `sql/schema.sql` and truncate its tables:
+
+```bash
+createdb context_test
+TEST_DATABASE_URL=postgresql://localhost/context_test npm test
+```
+
 ## License
 
 ISC
