@@ -200,11 +200,11 @@ Set `"enabled": false` to skip metadata extraction entirely — content is still
 }
 ```
 
-- `min_similarity` (default `0.3`, from 0 to 1): the cosine floor for `search_context`, applied to both facts and captures. Calibrate it per embedding model, since one model's "unrelated" score is another's "relevant". A `min_similarity` argument on the call overrides it.
-- `domain_boost` (default `0`): with `0`, a requested domain filters captures to that domain. Above `0`, matching captures gain this much in ranking and the rest stay visible, which suits model-assigned domains. Facts are always filtered. The floor applies before the boost, so a boost never admits a weak match, and a boost needs a floor above `0`.
+- `min_similarity` (default `0.3`, from 0 to 1): the cosine floor for `search_context`, applied to facts and to semantic capture results; identifier keyword matches (below) are not floored. Calibrate it per embedding model, since one model's "unrelated" score is another's "relevant". A `min_similarity` argument on the call overrides it.
+- `domain_boost` (default `0`): with `0`, a requested domain filters captures to that domain. Above `0`, matching captures gain this much in ranking and the rest stay visible, which suits model-assigned domains. Facts are always filtered. The floor applies before the boost, so a boost never admits a weak match. Identifier search scales the boost by `1 / min_similarity`, so a boost needs a floor above `0`.
 - `ef_search` (default `200`, a whole number from 1 to 1000): HNSW candidates collected before the domain filter, used whenever a domain is given. pgvector's default of 40 can find nothing in a small domain.
 
-An out-of-range value stops the server and the vault sync at startup, naming the setting.
+An invalid value stops the server and the vault sync at startup, naming the setting.
 
 ### Identifier search
 

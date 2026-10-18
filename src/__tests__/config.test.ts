@@ -265,6 +265,9 @@ describe("loadConfig", () => {
     [{ ef_search: 0 }, /search\.ef_search/],
     [{ ef_search: 1001 }, /search\.ef_search/],
     [{ ef_search: 40.5 }, /search\.ef_search/],
+    [{ ef_search: "200" }, /got "200"/],
+    [{ min_similarity: 1e-320, domain_boost: 0.05 }, /above 0 when search\.domain_boost/],
+    [{ domain_boost: 1e308 }, /above 0 when search\.domain_boost/],
   ])("rejects an invalid search setting %j at load", async (search, message) => {
     await expect(loadConfigWith({ search })).rejects.toThrow(message);
   });
@@ -274,6 +277,10 @@ describe("loadConfig", () => {
     await expect(
       loadConfigWith({ search: { min_similarity: 0, domain_boost: 0.02 } })
     ).rejects.toThrow(/above 0 when search\.domain_boost/);
+  });
+
+  it("rejects a search block that is not an object", async () => {
+    await expect(loadConfigWith({ search: null })).rejects.toThrow(/search must be an object/);
   });
 
   it("accepts a zero floor when nothing boosts", async () => {

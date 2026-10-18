@@ -176,21 +176,32 @@ function normalizeConfig(config: CollectorConfig): CollectorConfig {
 }
 
 // A bad value here would otherwise surface per query, or not at all: ef_search outside
-// pgvector's 1..1000 fails every domain search, and a boost over a zero floor is infinite.
-// The typeof checks matter: comparisons coerce, so "0" and null would pass the ranges.
+// pgvector's 1..1000 fails every domain search, and identifier search scales the boost by
+// 1 / floor, so the ratio must stay finite. Number.isFinite also refuses "0" and null,
+// which plain comparisons coerce into range; JSON.stringify keeps "200" from reading as 200.
 function checkSearch(search: CollectorConfig["search"]): void {
+  if (typeof search !== "object" || search === null) {
+    throw new Error(`search must be an object, got ${JSON.stringify(search)}.`);
+  }
   const { min_similarity, domain_boost, ef_search } = search;
-  if (!(typeof min_similarity === "number" && min_similarity >= 0 && min_similarity <= 1)) {
-    throw new Error(`search.min_similarity must be between 0 and 1, got ${min_similarity}.`);
+  if (!(Number.isFinite(min_similarity) && min_similarity >= 0 && min_similarity <= 1)) {
+    throw new Error(
+      `search.min_similarity must be between 0 and 1, got ${JSON.stringify(min_similarity)}.`
+    );
   }
-  if (!(typeof domain_boost === "number" && domain_boost >= 0)) {
-    throw new Error(`search.domain_boost must be 0 or more, got ${domain_boost}.`);
+  if (!(Number.isFinite(domain_boost) && domain_boost >= 0)) {
+    throw new Error(`search.domain_boost must be 0 or more, got ${JSON.stringify(domain_boost)}.`);
   }
-  if (domain_boost > 0 && min_similarity === 0) {
-    throw new Error("search.min_similarity must be above 0 when search.domain_boost is set.");
+  if (domain_boost > 0 && !Number.isFinite(domain_boost / min_similarity)) {
+    throw new Error(
+      "search.min_similarity must be above 0 when search.domain_boost is set, and large " +
+        "enough that domain_boost / min_similarity is finite."
+    );
   }
   if (!(Number.isInteger(ef_search) && ef_search >= 1 && ef_search <= 1000)) {
-    throw new Error(`search.ef_search must be a whole number from 1 to 1000, got ${ef_search}.`);
+    throw new Error(
+      `search.ef_search must be a whole number from 1 to 1000, got ${JSON.stringify(ef_search)}.`
+    );
   }
 }
 
