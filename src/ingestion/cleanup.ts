@@ -11,20 +11,28 @@ export async function lockIndexWrites(client: PoolClient): Promise<void> {
   await client.query("SELECT pg_advisory_xact_lock(hashtext('context-collector:index-writes'))");
 }
 
-// Drops a file's claim on its captures. A capture it owns that another file still links
-// to moves to that file instead of being deleted; only captures nothing else holds go.
-export async function releaseSource(client: PoolClient, absPath: string): Promise<number> {
+// Drops a file's claim on its captures, except those whose hash is in `keep` (the chunks a
+// re-ingest still holds). A released capture another file links to moves to that file.
+export async function releaseSource(
+  client: PoolClient,
+  absPath: string,
+  keep: string[] = []
+): Promise<number> {
   await client.query("DELETE FROM capture_sources WHERE source_file = $1", [absPath]);
   await client.query(
     `UPDATE captures c SET source_file = l.source_file
        FROM (SELECT capture_id, min(source_file) AS source_file
                FROM capture_sources
-              WHERE capture_id IN (SELECT id FROM captures WHERE source_file = $1)
+              WHERE capture_id IN (SELECT id FROM captures
+                                    WHERE source_file = $1 AND content_hash <> ALL($2::text[]))
               GROUP BY capture_id) l
       WHERE c.id = l.capture_id`,
-    [absPath]
+    [absPath, keep]
   );
-  const result = await client.query("DELETE FROM captures WHERE source_file = $1", [absPath]);
+  const result = await client.query(
+    "DELETE FROM captures WHERE source_file = $1 AND content_hash <> ALL($2::text[])",
+    [absPath, keep]
+  );
   return result.rowCount ?? 0;
 }
 

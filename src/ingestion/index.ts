@@ -127,7 +127,7 @@ export async function ingestFile(
   const { duplicates } = await withTransaction(async (client) => {
     await lockIndexWrites(client);
     if (existing.rows.length > 0) {
-      await releaseSource(client, absPath);
+      await releaseSource(client, absPath, prepared.map((p) => p.contentHash));
     }
     const r = await persistChunks(client, prepared);
     // Duplicates count: they are linked, so this file still finds them.

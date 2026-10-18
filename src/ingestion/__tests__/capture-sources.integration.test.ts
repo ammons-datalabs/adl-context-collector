@@ -63,9 +63,26 @@ describe.skipIf(!TEST_DATABASE_URL)("capture sources (real database)", () => {
     await writeFile(original, section("Alpha") + section("Gamma"));
     await ingestFile(original);
 
+    expect(await ownerOf("Alpha")).toEqual([original]);
     expect(await ownerOf("Beta")).toEqual([snapshot]);
     expect(await ownerOf("Gamma")).toEqual([original]);
     expect(await linkCount(snapshot)).toBe(2);
+  });
+
+  it("refreshes a kept shared capture's classification from its owner", async () => {
+    const original = join(dir, "original.md");
+    const copy = join(dir, "copy.md");
+    const typed = (type: string) => `---\ntype: ${type}\n---\n\n` + section("Alpha") + section("Beta");
+    await writeFile(original, typed("note"));
+    await writeFile(copy, typed("note"));
+    await ingestFile(original);
+    await ingestFile(copy);
+
+    await writeFile(original, typed("review"));
+    await ingestFile(original);
+
+    const [beta] = await sql("SELECT source_file, type FROM captures WHERE content LIKE '%Beta is a section%'");
+    expect(beta).toEqual({ source_file: original, type: "review" });
   });
 
   it("keeps a moved file's chunks when the old path is deleted", async () => {

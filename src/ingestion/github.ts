@@ -70,7 +70,7 @@ export async function ingestGitHubIssue(
   await withTransaction(async (client) => {
     await lockIndexWrites(client);
     if (existingHash !== null) {
-      await releaseSource(client, sourcePath);
+      await releaseSource(client, sourcePath, prepared.map((p) => p.contentHash));
     }
     await persistChunks(client, prepared);
     const insertedCount = chunks.length - failed;

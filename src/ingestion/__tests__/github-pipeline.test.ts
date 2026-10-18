@@ -80,7 +80,7 @@ describe("ingestGitHubIssue", () => {
     expect(upsert![1][1]).toBe(CONTENT_HASH); // file_hash = content hash
   });
 
-  it("deletes old captures (before inserts) when re-ingesting a changed issue", async () => {
+  it("releases old captures, keeping the chunks it still holds, before inserts on re-ingest", async () => {
     db.query.mockResolvedValueOnce({ rows: [{ file_hash: "oldhash456" }] });
     const { ingestGitHubIssue } = await import("../github.js");
     const result = await ingestGitHubIssue(makeIssue(), "org/repo");
@@ -91,6 +91,7 @@ describe("ingestGitHubIssue", () => {
     );
     expect(del).toBeDefined();
     expect(del![1][0]).toBe("github://org/repo/issues/42");
+    expect(del![1][1]).toContain("fakehash123"); // chunks the issue still holds are kept
 
     const sqls = db.txSql();
     expect(sqls[1]).toContain("pg_advisory_xact_lock");
