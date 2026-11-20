@@ -31,12 +31,19 @@ describe("search_facts query argument", () => {
   });
 
   it("searches exactly as search does", async () => {
-    await client.callTool({ name: "search_facts", arguments: { search: "harbour budget" } });
-    await client.callTool({ name: "search_facts", arguments: { query: "harbour budget" } });
+    const searchResult = await client.callTool({
+      name: "search_facts",
+      arguments: { search: "harbour budget" },
+    });
+    const queryResult = await client.callTool({
+      name: "search_facts",
+      arguments: { query: "harbour budget" },
+    });
 
     const [bySearch, byQuery] = db.query.mock.calls;
     expect(bySearch[1]).toContain("%harbour%");
     expect(byQuery).toEqual(bySearch);
+    expect(queryResult).toEqual(searchResult);
   });
 
   it("rejects search and query together", async () => {
