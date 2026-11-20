@@ -46,11 +46,12 @@ describe("search_facts query argument", () => {
     expect(queryResult).toEqual(searchResult);
   });
 
-  it("rejects search and query together", async () => {
-    const result = await client.callTool({
-      name: "search_facts",
-      arguments: { search: "harbour", query: "budget" },
-    });
+  // An empty search still counts as given: search ?? query keeps the "", which returns unfiltered facts.
+  it.each([
+    { search: "harbour", query: "budget" },
+    { search: "", query: "harbour" },
+  ])("rejects search and query together: %j", async (args) => {
+    const result = await client.callTool({ name: "search_facts", arguments: args });
 
     expect(result.isError).toBe(true);
     expect(db.query).not.toHaveBeenCalled();
