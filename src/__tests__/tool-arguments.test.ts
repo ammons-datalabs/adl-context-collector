@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { connectRegisteredServer } from "./registered-server.js";
 
@@ -24,5 +24,35 @@ describe("registered tool arguments", () => {
       expect(result.isError, name).toBe(true);
       expect(text(result), name).toContain("not_a_parameter");
     }
+  });
+});
+
+describe("search_facts query argument", () => {
+  let db: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    const { query } = await import("../db.js");
+    db = query as ReturnType<typeof vi.fn>;
+    db.mockReset();
+    db.mockResolvedValue({ rows: [] });
+  });
+
+  it("searches exactly as search does", async () => {
+    await client.callTool({ name: "search_facts", arguments: { search: "harbour budget" } });
+    await client.callTool({ name: "search_facts", arguments: { query: "harbour budget" } });
+
+    const [bySearch, byQuery] = db.mock.calls;
+    expect(bySearch[1]).toContain("%harbour%");
+    expect(byQuery).toEqual(bySearch);
+  });
+
+  it("rejects search and query together", async () => {
+    const result = await client.callTool({
+      name: "search_facts",
+      arguments: { search: "harbour", query: "budget" },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(db).not.toHaveBeenCalled();
   });
 });

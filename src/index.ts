@@ -98,6 +98,8 @@ strictTool(
       .string()
       .optional()
       .describe("Text search across key, value, and context"),
+    // search_context names its text argument query, so callers reach for it here too.
+    query: z.string().optional().describe("Same as search; pass one or the other"),
     current_only: z
       .boolean()
       .default(true)
@@ -105,7 +107,12 @@ strictTool(
       .describe("Only current facts (default true)"),
     limit: z.number().min(1).max(100).default(20).optional(),
   },
-  async (args) => searchFacts(args)
+  async ({ query, ...args }) => {
+    if (query !== undefined && args.search !== undefined) {
+      throw new Error("Pass search or query, not both.");
+    }
+    return searchFacts({ ...args, search: args.search ?? query });
+  }
 );
 
 // 4. Save a thought/note/decision
