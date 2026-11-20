@@ -2,9 +2,6 @@ import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { connectRegisteredServer } from "./registered-server.js";
 
-vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
-  StdioServerTransport: class {},
-}));
 vi.mock("../db.js");
 
 let client: Client;

@@ -8,7 +8,6 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 
 // index.ts registers its tools and connects stdio on import, so the server is taken at
 // connect and re-attached to an in-memory client: calls run through the real registration.
-// The calling test file must mock "@modelcontextprotocol/sdk/server/stdio.js".
 export async function connectRegisteredServer(): Promise<Client> {
   const dir = mkdtempSync(join(tmpdir(), "cc-registration-"));
   writeFileSync(join(dir, "config.json"), "{}");

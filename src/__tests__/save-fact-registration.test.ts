@@ -2,9 +2,6 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { connectRegisteredServer } from "./registered-server.js";
 
-vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
-  StdioServerTransport: class {},
-}));
 vi.mock("../tools/save-fact.js", () => ({
   saveFact: vi.fn().mockResolvedValue({ content: [{ type: "text", text: "saved" }] }),
 }));
