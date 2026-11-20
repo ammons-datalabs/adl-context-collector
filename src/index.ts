@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, type ToolCallback } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { DOMAINS, CAPTURE_TYPES } from "./types.js";
@@ -22,8 +22,19 @@ const server = new McpServer({
   version: "1.0.0",
 });
 
+// The SDK silently drops arguments a tool does not define, so a misnamed one changes the
+// call's meaning with no error. A strict schema rejects it instead.
+function strictTool<Shape extends z.ZodRawShape>(
+  name: string,
+  description: string,
+  shape: Shape,
+  cb: ToolCallback<z.ZodObject<Shape, "strict">>
+) {
+  server.registerTool(name, { description, inputSchema: z.object(shape).strict() }, cb);
+}
+
 // 1. Semantic search across captures
-server.tool(
+strictTool(
   "search_context",
   config.tools.search_context.description,
   {
@@ -50,7 +61,7 @@ server.tool(
 );
 
 // 2. Precise fact lookup by key
-server.tool(
+strictTool(
   "lookup_fact",
   config.tools.lookup_fact.description,
   {
@@ -72,7 +83,7 @@ server.tool(
 );
 
 // 3. Browse/filter facts
-server.tool(
+strictTool(
   "search_facts",
   config.tools.search_facts.description,
   {
@@ -87,6 +98,8 @@ server.tool(
       .string()
       .optional()
       .describe("Text search across key, value, and context"),
+    // search_context names its text argument query, so callers reach for it here too.
+    query: z.string().optional().describe("Same as search; pass one or the other"),
     current_only: z
       .boolean()
       .default(true)
@@ -94,11 +107,16 @@ server.tool(
       .describe("Only current facts (default true)"),
     limit: z.number().min(1).max(100).default(20).optional(),
   },
-  async (args) => searchFacts(args)
+  async ({ query, ...args }) => {
+    if (query !== undefined && args.search !== undefined) {
+      throw new Error("Pass search or query, not both.");
+    }
+    return searchFacts({ ...args, search: args.search ?? query });
+  }
 );
 
 // 4. Save a thought/note/decision
-server.tool(
+strictTool(
   "capture_thought",
   config.tools.capture_thought.description,
   {
@@ -118,7 +136,7 @@ server.tool(
 );
 
 // 5. Save/update a structured fact
-server.tool(
+strictTool(
   "save_fact",
   config.tools.save_fact.description,
   saveFactShape,
@@ -126,7 +144,7 @@ server.tool(
 );
 
 // 6. Browse recent captures
-server.tool(
+strictTool(
   "list_recent",
   config.tools.list_recent.description,
   {
@@ -143,7 +161,7 @@ server.tool(
 );
 
 // 7. System overview
-server.tool(
+strictTool(
   "context_stats",
   config.tools.context_stats.description,
   {},
@@ -151,7 +169,7 @@ server.tool(
 );
 
 // 8. Document ingestion
-server.tool(
+strictTool(
   "ingest_document",
   config.tools.ingest_document.description,
   {
@@ -175,7 +193,7 @@ server.tool(
 );
 
 // 9. Project pulse — cross-repo status
-server.tool(
+strictTool(
   "project_pulse",
   config.tools.project_pulse.description,
   {

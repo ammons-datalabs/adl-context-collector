@@ -1,39 +1,16 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { mkdtempSync, writeFileSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { connectRegisteredServer } from "./registered-server.js";
 
-vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
-  StdioServerTransport: class {},
-}));
 vi.mock("../tools/save-fact.js", () => ({
   saveFact: vi.fn().mockResolvedValue({ content: [{ type: "text", text: "saved" }] }),
 }));
 
-// index.ts registers its tools and connects stdio on import, so the server is taken at
-// connect and re-attached to an in-memory client: the call runs through the real registration.
 let client: Client;
 let valid: { domain: string; category: string; key: string; value: string };
 
 beforeAll(async () => {
-  const dir = mkdtempSync(join(tmpdir(), "cc-registration-"));
-  writeFileSync(join(dir, "config.json"), "{}");
-  process.env.COLLECTOR_CONFIG = join(dir, "config.json");
-
-  const connect = McpServer.prototype.connect;
-  let server: McpServer | undefined;
-  vi.spyOn(McpServer.prototype, "connect").mockImplementationOnce(async function (this: McpServer) {
-    server = this;
-  });
-  await import("../index.js");
-
-  const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
-  await connect.call(server!, serverSide);
-  client = new Client({ name: "test", version: "0" });
-  await client.connect(clientSide);
+  client = await connectRegisteredServer();
 
   const { DOMAINS } = await import("../types.js");
   const { loadConfig } = await import("../config.js");
