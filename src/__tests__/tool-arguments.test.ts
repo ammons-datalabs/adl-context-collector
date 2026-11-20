@@ -13,16 +13,14 @@ beforeAll(async () => {
   client = await connectRegisteredServer();
 });
 
-const text = (result: Awaited<ReturnType<Client["callTool"]>>) =>
-  (result.content as Array<{ text: string }>)[0].text;
-
 describe("registered tool arguments", () => {
   it("rejects an argument the tool does not define, on every tool", async () => {
     const { tools } = await client.listTools();
     for (const { name } of tools) {
       const result = await client.callTool({ name, arguments: { not_a_parameter: "x" } });
       expect(result.isError, name).toBe(true);
-      expect(text(result), name).toContain("not_a_parameter");
+      const [{ text }] = result.content as Array<{ text: string }>;
+      expect(text, name).toContain("not_a_parameter");
     }
   });
 });
