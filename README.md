@@ -6,7 +6,7 @@ Your context is your most valuable asset when working with LLMs. But it's locked
 
 By default it uses OpenAI for embeddings and metadata extraction. Optionally, run everything locally with [Ollama](#local-setup-ollama) — no data leaves your machine.
 
-**Want to get started fast?** Fork the [adl-context-vault](https://github.com/ammonsdatalabs/adl-context-vault) starter template.
+**Want to get started fast?** Fork the [adl-context-vault](https://github.com/ammons-datalabs/adl-context-vault) starter template.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ docker run -d --name context-db \
 ### 1. Clone context-collector
 
 ```bash
-git clone https://github.com/ammonsdatalabs/adl-context-collector.git
+git clone https://github.com/ammons-datalabs/adl-context-collector.git
 cd adl-context-collector
 npm install
 ```
@@ -61,7 +61,7 @@ psql my_context < sql/schema.sql
 
 ### 3. Set up a vault
 
-A vault is a directory that holds your configuration and data. The simplest way to start is to fork the [adl-context-vault](https://github.com/ammonsdatalabs/adl-context-vault) template. Or create one manually:
+A vault is a directory that holds your configuration and data. The simplest way to start is to fork the [adl-context-vault](https://github.com/ammons-datalabs/adl-context-vault) template. Or create one manually:
 
 ```bash
 mkdir my-vault && cd my-vault
